@@ -1,0 +1,33 @@
+:root {
+  --bg: #16181d;
+  --panel: #1f222a;
+  --text: #c9ced8;
+  --muted: #7d8494;
+  --checker-a: #2a2e38;
+  --checker-b: #323744;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+#app { display: grid; grid-template-columns: 1fr auto; height: 100vh; }
+#view3d { position: relative; min-width: 0; }
+#view3d canvas { display: block; width: 100%; height: 100%; }
+#side { width: 420px; overflow: auto; padding: 12px; padding-top: 48px; display: flex; flex-direction: column; gap: 12px; }
+.panel { background: var(--panel); border-radius: 6px; padding: 10px; }
+.panel h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.panel h2 span { color: var(--muted); font-weight: 400; margin-left: 6px; }
+#compass, .sheetWrap canvas {
+  image-rendering: pixelated;
+  background-color: var(--checker-a);
+  background-image:
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%, transparent 75%, var(--checker-b) 75%),
+    linear-gradient(45deg, var(--checker-b) 25%, transparent 25%, transparent 75%, var(--checker-b) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+.sheetWrap { overflow: auto; max-height: 60vh; }
+.lil-gui.root { position: absolute; top: 8px; right: 440px; }
+@media (max-width: 900px) {
+  #app { grid-template-columns: 1fr; grid-template-rows: 50vh auto; height: auto; }
+  #side { width: 100%; padding-top: 12px; }
+  .lil-gui.root { right: 8px; }
+}

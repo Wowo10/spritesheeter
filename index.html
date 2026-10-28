@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ssheet – RTS sprite generator</title>
+  </head>
+  <body>
+    <div id="app">
+      <section id="view3d"></section>
+      <section id="side">
+        <div class="panel">
+          <h2>Sprite <span id="animLabel"></span></h2>
+          <canvas id="compass"></canvas>
+        </div>
+        <div class="panel">
+          <h2>Sheet <span id="sheetInfo"></span></h2>
+          <div class="sheetWrap"><canvas id="sheet"></canvas></div>
+        </div>
+      </section>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

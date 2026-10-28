@@ -309,6 +309,12 @@ const ROW_PATTERNS: Record<AnimationName, RegExp[]> = {
   cast: [/^(?!.*channel).*(cast|spell|magic)/i],
   death: [/death|dying|\bdie\b|dead/i],
   channel: [/channel/i, /beam|conjur/i],
+  hit: [/hit.*react|react|flinch|hurt|damage|impact/i],
+  // only once walk has taken its pick, so a lone run clip still fills walk
+  run: [/run|sprint/i, /jog/i],
+  work: [/work|gather|harvest|mining|\bmine\b|dig|build|hammer/i],
+  carry: [/carry/i],
+  taunt: [/taunt|challenge|provok/i, /cheer|victory|celebrat|shout|roar|flex/i],
 };
 
 /** Picks a clip for each sheet row by name; rows with no likely clip get null. */

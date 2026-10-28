@@ -45,6 +45,8 @@ export interface Pose {
   fx?: { pos: [number, number, number]; scale: number; spin?: number };
   /** How much of the sprite is drawn, 0-1, as an ordered dither; 1 when absent. */
   opacity?: number;
+  /** A sack slung over this shoulder, held by the hand on that side; hidden when absent. */
+  load?: 'L' | 'R';
 }
 
 /** One sheet row. Defaults to the humanoid's params and pose; beasts bring their own. */
@@ -104,4 +106,6 @@ export interface BeastPose {
   /** Spell effect: position relative to the mouth (in head space, facing +Z), size and spin; hidden when absent. */
   fx?: { pos: [number, number, number]; scale: number; spin?: number };
   opacity?: number;
+  /** Packs strapped over the back; hidden when absent. */
+  load?: boolean;
 }

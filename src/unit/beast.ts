@@ -16,6 +16,8 @@ export interface Beast {
   hipHeight: number;
   /** Spell effect at the mouth; hidden unless a pose shows it. */
   fx: Group;
+  /** Packs over the back; hidden unless a pose shows them. */
+  load: Group;
   shadow: Mesh | null;
 }
 
@@ -130,6 +132,7 @@ export function buildBeast(p: BeastParams, mats: MaterialLibrary): Beast {
   buildWings(b, joints, p, d);
   buildBack(b, joints, p, d, topY, neckT);
   buildBarding(b, joints, p, d, topY, neckT);
+  const load = buildPacks(b, joints.pelvis, d, topY);
 
   let shadow: Mesh | null = null;
   if (p.shadow) {
@@ -139,7 +142,7 @@ export function buildBeast(p: BeastParams, mats: MaterialLibrary): Beast {
     shadow.userData.length = Math.max(1, (L + d.neck + h) / (W * 1.8));
   }
 
-  return { root, body, joints, hipHeight, fx, shadow };
+  return { root, body, joints, hipHeight, fx, load, shadow };
 }
 
 function buildEars(b: PartBuilder, head: Object3D, p: BeastParams, h: number): void {
@@ -283,6 +286,18 @@ function buildBarding(b: PartBuilder, j: Record<BeastJoint, Group>, p: BeastPara
   }
 }
 
+/** Saddlebags hanging down both flanks where the halves meet, a bedroll across the top. */
+function buildPacks(b: PartBuilder, pelvis: Object3D, d: BeastDims, topY: number): Group {
+  const { length: L, depth: D, width: W } = d;
+  const load = new Group();
+  load.name = 'load';
+  load.visible = false;
+  pelvis.add(load);
+  for (const [, side] of SIDES) b.box(load, 'leather', [W * 0.3, D * 0.5, L * 0.3], [side * W * 0.62, topY - D * 0.42, L * 0.45]);
+  b.box(load, 'bone', [W * 1.1, D * 0.28, L * 0.18], [0, topY + D * 0.1, L * 0.45]);
+  return load;
+}
+
 export function applyBeastPose(beast: Beast, pose: BeastPose): void {
   for (const name of BEAST_JOINTS) {
     const j = beast.joints[name];
@@ -300,6 +315,8 @@ export function applyBeastPose(beast: Beast, pose: BeastPose): void {
     const s = Math.min(1, Math.max(0.45, 1 - 1.5 * y));
     beast.shadow.scale.set(s, 1, s * beast.shadow.userData.length);
   }
+
+  beast.load.visible = pose.load ?? false;
 
   const scale = pose.fx?.scale ?? 0;
   beast.fx.visible = scale > 0.01;

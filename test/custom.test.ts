@@ -132,7 +132,21 @@ describe('guessing', () => {
       cast: null,
       death: 'Dying',
       channel: null,
+      hit: 'Hit Reaction',
+      run: 'Running',
+      work: null,
+      carry: null,
+      taunt: null,
     });
+  });
+
+  it('fills walk before run, and finds labour and carrying clips', () => {
+    expect(guessRows(['Running']).walk).toBe('Running');
+    const rows = guessRows(['Mining', 'Carry Box', 'Sprint']);
+    expect(rows.work).toBe('Mining');
+    expect(rows.carry).toBe('Carry Box');
+    expect(rows.run).toBe('Sprint');
+    expect(guessRows(['Idle', 'Taunt']).taunt).toBe('Taunt');
   });
 
   it('keeps channelled spells off the cast row', () => {

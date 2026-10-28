@@ -7,7 +7,7 @@ Every export produces two files:
 | `<name>-<team>.png` | The sprite sheet (RGBA PNG, transparent background). **💾 export all team colors** writes one PNG per team colour. |
 | `<name>.json` | The atlas data: frame size, layout, animations (row, frame count, fps, loop), directions, ground anchor, palette and team colours. |
 
-You need both. The PNG holds the pixels and the JSON tells you where each frame is. Don't hardcode frame counts or rows. They change with the frame-count settings, and a custom model sheet only includes the animations that have a clip assigned.
+You need both. The PNG holds the pixels and the JSON tells you where each frame is. Don't hardcode frame counts or rows. They change with the frame-count settings and with the animations checked in the **Export** folder (by default `idle`, `walk`, `attack` and `death`). A custom model sheet also only includes the animations that have a clip assigned.
 
 ## Sheet layout
 
@@ -61,14 +61,14 @@ Use `py` (the foot position) for depth sorting.
 
 ## The JSON file
 
-Example from a default humanoid (32 px frames, default frame counts; the palette is truncated here):
+Example from a default humanoid (32 px frames, default frame counts, every animation checked; the palette is truncated here):
 
 ```json
 {
   "frameWidth": 32,
   "frameHeight": 32,
   "columns": 5,
-  "rows": 28,
+  "rows": 53,
   "directions": ["N", "NE", "E", "SE", "S"],
   "mirrored": { "NW": "NE", "W": "E", "SW": "SE" },
   "anchor": { "x": 16, "y": 25 },
@@ -77,8 +77,13 @@ Example from a default humanoid (32 px frames, default frame counts; the palette
     "walk":   { "row": 4,  "frames": 5, "fps": 8, "loop": true  },
     "attack": { "row": 9,  "frames": 5, "fps": 8, "loop": false },
     "cast":   { "row": 14, "frames": 6, "fps": 8, "loop": false },
-    "death":   { "row": 20, "frames": 4, "fps": 6, "loop": false },
-    "channel": { "row": 24, "frames": 4, "fps": 6, "loop": true  }
+    "death":   { "row": 20, "frames": 4, "fps": 6,  "loop": false },
+    "channel": { "row": 24, "frames": 4, "fps": 6,  "loop": true  },
+    "hit":     { "row": 28, "frames": 3, "fps": 10, "loop": false },
+    "run":     { "row": 31, "frames": 6, "fps": 12, "loop": true  },
+    "work":    { "row": 37, "frames": 5, "fps": 8,  "loop": true  },
+    "carry":   { "row": 42, "frames": 5, "fps": 8,  "loop": true  },
+    "taunt":   { "row": 47, "frames": 6, "fps": 8,  "loop": false }
   },
   "palette": [[0, 0, 0], [58, 10, 10], "..."],
   "team": {
@@ -120,15 +125,17 @@ if loop: frameIndex = frameIndex mod frames
 else:    frameIndex = min(frameIndex, frames - 1)   // hold the last frame
 ```
 
-One-shot animations (`attack`, `cast`, `death`) are rendered so the last frame is the end pose. For `death`, hold that frame as the corpse. A ghost's last death frame is empty, because it fades away and leaves no corpse. For `attack` and `cast`, switch back to `idle` or `walk` once the last frame has played, and trigger the hit or spell on a frame of your choice (often around 60% of the way through).
+One-shot animations (`attack`, `cast`, `death`, `hit`, `taunt`) are rendered so the last frame is the end pose. For `death`, hold that frame as the corpse. A ghost's last death frame is empty, because it fades away and leaves no corpse. For `attack`, `cast`, `hit` and `taunt`, switch back to `idle` or `walk` once the last frame has played, and trigger the hit or spell on a frame of your choice (often around 60% of the way through).
 
-Looping animations (`idle`, `walk`, `channel`) are rendered without a duplicate end frame, so they wrap straight from the last frame back to frame 0.
+Looping animations (`idle`, `walk`, `channel`, `run`, `work`, `carry`) are rendered without a duplicate end frame, so they wrap straight from the last frame back to frame 0.
 
 `channel` is a sustained spell: the unit holds both hands out with a pulsing spell in front of them. Play it for as long as the unit is channelling, such as for a beam, a heal over time or a summon, then switch back to `idle`. A game will usually draw the beam or other target effect itself, starting from the spell's position.
 
-Beast sheets have the same rows: `attack` is a bite, `cast` a roar or, for beasts with magic breath, a spat spell, and `channel` a snarl or a steady breath stream. Their last `death` frame is the body lying on its side, or on its back for lizards and crocodiles.
+`hit` is a short flinch: the unit is knocked back and recovers to its standing pose. Play it over whatever the unit was doing when it takes damage, then go back to that. `run` is a faster gait than `walk`, for charging or fleeing; its legs cover more ground per loop, so move the unit faster while it plays. `work` swings the unit's tool or weapon down into the ground in front of it, so it reads as mining, chopping, digging or building. `carry` is a walk with a sack over the shoulder of the empty hand, for workers taking resources home. `taunt` is a challenge: the unit raises its weapon overhead and shakes it, shouting, while an empty free hand beckons. Play it on a command or when idle units spot an enemy.
 
-New animations are added after the existing ones (`channel` comes after `death`), so the rows of animations that were already in a sheet don't move when you re-export.
+Beast sheets have the same rows: `attack` is a bite, `cast` a roar or, for beasts with magic breath, a spat spell, `channel` a snarl or a steady breath stream, `hit` a yelp and recoil, `run` a gallop (a fast scramble for lizards and crocodiles), `work` digging with the front paws, `carry` a plodding walk with packs on the back, and `taunt` rearing up to paw the air (lizards and crocodiles snap and lash their tails instead; winged beasts spread their wings). Their last `death` frame is the body lying on its side, or on its back for lizards and crocodiles.
+
+Animations are always stacked in the same order (`idle`, `walk`, `attack`, `cast`, `death`, `channel`, `hit`, `run`, `work`, `carry`, `taunt`), but unchecked ones leave no gap, so a row number depends on which animations were exported. Always read `row` from the JSON. If an animation isn't in `animations`, it wasn't exported.
 
 ### Picking a direction from movement
 

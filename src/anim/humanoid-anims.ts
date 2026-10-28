@@ -141,6 +141,51 @@ function walk(t: number, unit: UnitParams): Pose {
   };
 }
 
+/** Leaning into a run: long strides with a moment in the air, empty arms pumping. */
+function run(t: number, unit: UnitParams): Pose {
+  const phase = t * Math.PI * 2;
+  const s = Math.sin(phase);
+  const c = Math.cos(phase);
+  const k = kinds(unit);
+  const arms = armStance(unit);
+  for (const h of HANDS) {
+    if (k[h] === 'none') setArm(arms, h, { shoulder: [10 + sgn(h) * 40 * s, 0, 10], elbow: [85, 0, 0], hand: [0, 0, 0] });
+    else nudge(arms, `shoulder${h}`, [sgn(h) * 1.5 * WALK_SWING[k[h]] * s, 0, 0]);
+  }
+  return {
+    joints: {
+      ...arms,
+      spine: [-16, 8 * s, 0],
+      head: [10, -6 * s, 0],
+      hipL: [8 + 42 * s, 0, 3],
+      hipR: [8 - 42 * s, 0, 3],
+      // the trailing foot kicks up behind as it comes through
+      kneeL: [-12 - 75 * Math.max(0, c), 0, 0],
+      kneeR: [-12 - 75 * Math.max(0, -c), 0, 0],
+    },
+    // lowest as the legs pass under the body, highest with them spread in the air
+    hips: [0, -0.08 + 0.06 * Math.abs(s), 0],
+  };
+}
+
+/** Arm holding a sack on its shoulder: forearm folded back up to grip its neck. */
+const CARRY_ARM: Arm = { shoulder: [35, 0, 0], elbow: [140, 0, 0], hand: [0, 0, 0] };
+
+/**
+ * Walks in the unit's gait with a sack over one shoulder, held by the empty hand (the left
+ * if both or neither are empty), stooped under its weight.
+ */
+function carry(t: number, unit: UnitParams, hipHeight: number): Pose {
+  const k = kinds(unit);
+  const side: Hand = k.L === 'none' || k.R !== 'none' ? 'L' : 'R';
+  const p = WALK[unit.gait](t, unit, hipHeight);
+  const joints = { ...p.joints };
+  setArm(joints, side, CARRY_ARM);
+  nudge(joints, 'spine', [-6, 0, 0]);
+  const [x, y, z] = p.hips ?? [0, 0, 0];
+  return { ...p, joints, hips: [x, y - 0.02, z], load: side };
+}
+
 // --- floating and shambling ----------------------------------------------------
 
 /** Legs hanging loose under a floating unit: trailing `trail` degrees back, swaying with s in [-1, 1]. */
@@ -223,14 +268,35 @@ function shambleWalk(t: number, unit: UnitParams): Pose {
   return { joints, hips: [0.04 * s, -0.03 - 0.06 * Math.max(0, -s), 0] };
 }
 
+/** Floaters rush along leaning hard into it, legs streaming out behind. */
+function floatRun(t: number, unit: UnitParams): Pose {
+  const p = floatWalk(t, unit);
+  const s = Math.sin(t * Math.PI * 2);
+  const joints = { ...p.joints, ...dangle(s, 45) };
+  nudge(joints, 'spine', [-12, 0, 0]);
+  nudge(joints, 'head', [8, 0, 0]);
+  return { ...p, joints };
+}
+
+/** Shamblers lurch along faster, pitched forward with the arms reaching. */
+function shambleRun(t: number, unit: UnitParams): Pose {
+  const p = shambleWalk(t, unit);
+  const joints = { ...p.joints };
+  nudge(joints, 'spine', [-12, 0, 0]);
+  nudge(joints, 'head', [10, 0, 0]);
+  for (const h of HANDS) nudge(joints, `shoulder${h}`, [12, 0, 0]);
+  return { ...p, joints };
+}
+
 const IDLE: Record<Gait, AnimationDef['pose']> = { walk: idle, float: floatIdle, shamble: shambleIdle };
 const WALK: Record<Gait, AnimationDef['pose']> = { walk, float: floatWalk, shamble: shambleWalk };
+const RUN: Record<Gait, AnimationDef['pose']> = { walk: run, float: floatRun, shamble: shambleRun };
 
 /**
  * Gait on top of the stationary animations: floaters attack and cast in mid-air with their
  * legs dangling; shamblers do it hunched over, and lunge with the head to bite.
  */
-function withGait(name: 'attack' | 'cast' | 'channel', pose: AnimationDef['pose']): AnimationDef['pose'] {
+function withGait(name: 'attack' | 'cast' | 'channel' | 'hit' | 'work' | 'taunt', pose: AnimationDef['pose']): AnimationDef['pose'] {
   return (t, unit, hipHeight) => {
     const p = pose(t, unit, hipHeight);
     if (unit.gait === 'float') {
@@ -740,6 +806,119 @@ function channel(t: number, unit: UnitParams, hipHeight: number): Pose {
   };
 }
 
+/** Knocked back by a blow: head snaps back, arms fly up, half a step back, then recovers. */
+function hit(t: number, unit: UnitParams): Pose {
+  const r = keys(t, [[0, 0], [0.25, 1], [1, 0]]);
+  const joints: Joints = { ...armStance(unit), ...LEGS_REST };
+  for (const h of HANDS) nudge(joints, `shoulder${h}`, [15 * r, 0, 10 * r]);
+  nudge(joints, 'hipR', [-14 * r, 0, 0]);
+  nudge(joints, 'kneeL', [-14 * r, 0, 0]);
+  joints.spine = [-3 + 16 * r, 0, 4 * r];
+  joints.head = [14 * r, 0, -6 * r];
+  return { joints, hips: [0, -0.03 * r, -0.06 * r] };
+}
+
+/**
+ * Looped labour: the tool hand (a weapon or tool if it has one, the right otherwise) swings
+ * its item up overhead and drives it down into the ground in front, bending into the blow.
+ * An empty other hand grips the haft too. Reads as mining, chopping, hammering or digging.
+ */
+function work(t: number, unit: UnitParams): Pose {
+  const k = kinds(unit);
+  const tools = HANDS.filter((h) => k[h] === 'chop' || k[h] === 'thrust');
+  const lead: Hand = tools.includes('R') || tools.length === 0 ? 'R' : 'L';
+  const swing: Arm = {
+    shoulder: rotKeys(t, [
+      [0, [60, 0, 10]],
+      [0.35, [165, 0, 8]],
+      [0.6, [40, 0, 6]],
+      [0.8, [30, 0, 8]],
+      [1, [60, 0, 10]],
+    ]),
+    elbow: rotKeys(t, [
+      [0, [50, 0, 0]],
+      [0.35, [70, 0, 0]],
+      [0.6, [5, 0, 0]],
+      [0.8, [15, 0, 0]],
+      [1, [50, 0, 0]],
+    ]),
+    // the head of the tool trails behind the hands on the way up and strikes forward-down
+    hand: rotKeys(t, [
+      [0, [40, 0, 0]],
+      [0.35, [20, 0, 0]],
+      [0.6, [30, 0, 0]],
+      [1, [40, 0, 0]],
+    ]),
+  };
+  const joints: Joints = { ...armStance(unit), hipL: [14, 0, 8], hipR: [-10, 0, 8], kneeL: [-18, 0, 0], kneeR: [-14, 0, 0] };
+  setArm(joints, lead, swing);
+  const other = otherHand(lead);
+  // roll < 0 brings the hand in to the haft
+  if (k[other] === 'none') setArm(joints, other, { ...swing, shoulder: [swing.shoulder[0], 0, -18], elbow: [swing.elbow[0] + 15, 0, 0] });
+  const spine = rotKeys(t, [
+    [0, [-6, 0, 0]],
+    [0.35, [6, 8, 0]],
+    [0.6, [-26, -6, 0]],
+    [0.8, [-24, 0, 0]],
+    [1, [-6, 0, 0]],
+  ]);
+  joints.spine = [spine[0], spine[1] * sgn(lead), spine[2]];
+  joints.head = [keys(t, [[0, 0], [0.35, 8], [0.6, 14], [1, 0]]), 0, 0];
+  return { joints, hips: [0, keys(t, [[0, -0.05], [0.35, -0.03], [0.6, -0.1], [0.8, -0.1], [1, -0.05]]), 0] };
+}
+
+/**
+ * Shouts a challenge: the weapon hand (as for work) thrusts its item overhead and shakes it
+ * twice, held upright, while an empty other hand beckons the enemy on. Starts and ends in
+ * the stance, like attack.
+ */
+function taunt(t: number, unit: UnitParams): Pose {
+  const k = kinds(unit);
+  const tools = HANDS.filter((h) => k[h] !== 'none' && k[h] !== 'shield');
+  const lead: Hand = tools.includes('R') || tools.length === 0 ? 'R' : 'L';
+  const joints: Joints = { ...armStance(unit), hipL: [10, 0, 10], hipR: [-8, 0, 10], kneeL: [-8, 0, 0], kneeR: [-6, 0, 0] };
+  const rest = restArm(unit, k[lead]);
+  // up at 0.25, two shakes, back down
+  const shoulder = rotKeys(t, [
+    [0, rest.shoulder],
+    [0.25, [165, 0, 18]],
+    [0.4, [145, 0, 22]],
+    [0.55, [168, 0, 18]],
+    [0.7, [145, 0, 22]],
+    [1, rest.shoulder],
+  ]);
+  const elbow = rotKeys(t, [
+    [0, rest.elbow],
+    [0.25, [15, 0, 0]],
+    [0.4, [40, 0, 0]],
+    [0.55, [15, 0, 0]],
+    [0.7, [40, 0, 0]],
+    [1, rest.elbow],
+  ]);
+  const upright = keys(t, [[0, 0], [0.25, 1], [0.7, 1], [1, 0]]);
+  const target = CAST_WRIST[k[lead]];
+  const wrist = target === undefined ? rest.hand[0] : target - shoulder[0] - elbow[0];
+  setArm(joints, lead, { shoulder, elbow, hand: [rest.hand[0] + (wrist - rest.hand[0]) * upright, 0, 0] });
+
+  const other = otherHand(lead);
+  if (k[other] === 'none') {
+    // arm out in front, palm up, curling the forearm in twice: "come on"
+    const out = keys(t, [[0, 0], [0.25, 1], [0.8, 1], [1, 0]]);
+    const curl = keys(t, [[0, 0], [0.3, 0], [0.45, 1], [0.6, 0], [0.75, 1], [0.9, 0], [1, 0]]);
+    const r = restArm(unit, 'none');
+    setArm(joints, other, {
+      shoulder: [r.shoulder[0] + (55 - r.shoulder[0]) * out, 0, r.shoulder[2] + (14 - r.shoulder[2]) * out],
+      elbow: [r.elbow[0] + (25 - r.elbow[0]) * out + 70 * curl, 0, 0],
+      hand: [0, 0, 0],
+    });
+  }
+  // chest out, head thrown back on each shout
+  const shout = keys(t, [[0, 0], [0.25, 1], [0.4, 0.6], [0.55, 1], [0.7, 0.6], [1, 0]]);
+  joints.spine = [-3 + 11 * shout, 6 * sgn(lead) * shout, 0];
+  joints.head = [16 * shout, 0, 0];
+  return { joints, hips: [0, -0.02 - 0.02 * shout, -0.02 * shout] };
+}
+
 // --- cape: secondary motion layered on top of every animation -----------------
 
 /** How far the cape and its lower half lift backward (degrees) at time t. */
@@ -768,6 +947,13 @@ const CAPE: Record<string, CapeMotion> = {
     keys(t, [[0, 8], [0.33, 25], [0.67, 45], [1, 0]]),
     keys(t, [[0, 5], [0.67, 30], [1, 0]]),
   ],
+  hit: (t) => [keys(t, [[0, 5], [0.25, 20], [1, 5]]), keys(t, [[0, 3], [0.25, 14], [1, 3]])],
+  run: (t) => [30 + 8 * Math.abs(Math.sin(t * Math.PI * 2)), 22 + 10 * Math.abs(Math.cos(t * Math.PI * 2))],
+  // swings out behind as the body bends into the blow
+  work: (t) => [keys(t, [[0, 6], [0.35, 4], [0.6, 16], [0.8, 12], [1, 6]]), keys(t, [[0, 4], [0.6, 8], [0.8, 14], [1, 4]])],
+  taunt: (t) => [keys(t, [[0, 5], [0.25, 14], [0.55, 18], [1, 5]]), keys(t, [[0, 3], [0.4, 12], [0.7, 14], [1, 3]])],
+  // weighed down by the sack, it barely lifts
+  carry: (t) => [6 + 4 * Math.abs(Math.sin(t * Math.PI * 2)), 4 + 4 * Math.abs(Math.cos(t * Math.PI * 2))],
 };
 
 /** A ghost's wisp: [upper, tip] rotations. Its sideways roll lags a quarter cycle down the tip. */
@@ -808,6 +994,26 @@ const TAIL: Record<string, TailMotion> = {
     [keys(t, [[0, -6], [1, 12]]), 0, 0],
     [keys(t, [[0, -8], [1, 20]]), 0, 0],
   ],
+  hit: (t) => [
+    [keys(t, [[0, -6], [0.25, 4], [1, -6]]), 0, 0],
+    [keys(t, [[0, -8], [0.25, 6], [1, -8]]), 0, 0],
+  ],
+  run: (t) => {
+    const phase = t * Math.PI * 2;
+    return [
+      [-40 - 5 * Math.sin(phase), 0, 6 * Math.cos(phase)],
+      [-26 - 8 * Math.cos(phase), 0, 10 * Math.sin(phase)],
+    ];
+  },
+  work: (t) => [
+    [keys(t, [[0, -6], [0.6, -14], [1, -6]]), 0, 0],
+    [keys(t, [[0, -8], [0.8, -16], [1, -8]]), 0, 0],
+  ],
+  carry: (t) => TAIL.walk(t),
+  taunt: (t) => [
+    [keys(t, [[0, -6], [0.4, -14], [1, -6]]), 0, 0],
+    [keys(t, [[0, -8], [0.55, -18], [1, -8]]), 0, 0],
+  ],
 };
 
 /** Cape and wisp motion, and the unit's opacity, layered over a pose. */
@@ -827,12 +1033,12 @@ function withSecondary(name: string, pose: AnimationDef['pose']): AnimationDef['
 }
 
 // new animations go last: rows of sheets games already use must not shift
-export const ANIMATION_NAMES = ['idle', 'walk', 'attack', 'cast', 'death', 'channel'] as const;
+export const ANIMATION_NAMES = ['idle', 'walk', 'attack', 'cast', 'death', 'channel', 'hit', 'run', 'work', 'carry', 'taunt'] as const;
 export type AnimationName = (typeof ANIMATION_NAMES)[number];
 
 export type FrameCounts = Record<AnimationName, number>;
 
-export const DEFAULT_FRAME_COUNTS: FrameCounts = { idle: 4, walk: 5, attack: 5, cast: 6, death: 4, channel: 4 };
+export const DEFAULT_FRAME_COUNTS: FrameCounts = { idle: 4, walk: 5, attack: 5, cast: 6, death: 4, channel: 4, hit: 3, run: 6, work: 5, carry: 5, taunt: 6 };
 
 /** The sheet's animations, top to bottom. */
 export function humanoidAnimations(counts: FrameCounts = DEFAULT_FRAME_COUNTS): AnimationDef[] {
@@ -843,6 +1049,11 @@ export function humanoidAnimations(counts: FrameCounts = DEFAULT_FRAME_COUNTS): 
     { name: 'cast', frames: counts.cast, fps: 8, loop: false, pose: withGait('cast', cast) },
     { name: 'death', frames: counts.death, fps: 6, loop: false, pose: death },
     { name: 'channel', frames: counts.channel, fps: 6, loop: true, pose: withGait('channel', channel) },
+    { name: 'hit', frames: counts.hit, fps: 10, loop: false, pose: withGait('hit', hit) },
+    { name: 'run', frames: counts.run, fps: 12, loop: true, pose: (t, u, h) => RUN[u.gait](t, u, h) },
+    { name: 'work', frames: counts.work, fps: 8, loop: true, pose: withGait('work', work) },
+    { name: 'carry', frames: counts.carry, fps: 8, loop: true, pose: carry },
+    { name: 'taunt', frames: counts.taunt, fps: 8, loop: false, pose: withGait('taunt', taunt) },
   ];
   return all.map((a) => ({ ...a, pose: withSecondary(a.name, a.pose) }));
 }

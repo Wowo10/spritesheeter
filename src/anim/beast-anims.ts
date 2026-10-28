@@ -95,6 +95,11 @@ function idle(t: number, p: BeastParams): BeastPose {
 }
 
 function walk(t: number, p: BeastParams): BeastPose {
+  return trot(t, p, 28);
+}
+
+/** Legs swinging `stride` degrees either way. */
+function trot(t: number, p: BeastParams, stride: number): BeastPose {
   const d = beastDims(p);
   const phase = t * Math.PI * 2;
   const s = Math.sin(phase);
@@ -102,7 +107,7 @@ function walk(t: number, p: BeastParams): BeastPose {
   // a trot: diagonal pairs move together; each paw lifts while it swings forward
   const offset: Record<Leg, number> = { FL: 0, BR: 0, FR: Math.PI, BL: Math.PI };
   const joints = legs(p, d, (leg) => ({
-    swing: 28 * Math.sin(phase + offset[leg]),
+    swing: stride * Math.sin(phase + offset[leg]),
     lift: Math.max(0, Math.cos(phase + offset[leg])),
   }));
   // sprawled beasts swing the body side to side in an S, the head held steady and the tail
@@ -120,6 +125,112 @@ function walk(t: number, p: BeastParams): BeastPose {
       jaw: [-8 * up, 0, 0],
     },
     offset: [0, -0.02 * p.size * Math.abs(Math.cos(2 * phase)) * up, 0],
+  };
+}
+
+/**
+ * Upright beasts gallop: the hind pair then the front pair strike the ground, the back flexing
+ * and the body bounding. Sprawled ones scramble in a fast trot, the body whipping side to side.
+ */
+function run(t: number, p: BeastParams): BeastPose {
+  const d = beastDims(p);
+  const phase = t * Math.PI * 2;
+  const s = Math.sin(phase);
+  const up = 1 - p.sprawl;
+  // leg timing in cycles, blended between the two gaits by sprawl
+  const gallop: Record<Leg, number> = { BL: 0, BR: 0.12, FL: 0.5, FR: 0.62 };
+  const scramble: Record<Leg, number> = { FL: 0, BR: 0, FR: 0.5, BL: 0.5 };
+  const joints = legs(p, d, (leg) => {
+    const a = phase + (gallop[leg] * up + scramble[leg] * p.sprawl) * Math.PI * 2;
+    return { swing: 40 * Math.sin(a), lift: Math.max(0, Math.cos(a)) };
+  });
+  const wave = 18 * p.sprawl;
+  return {
+    joints: {
+      ...joints,
+      // neck stretched out low and forward
+      ...headRest(p, [-12 + 4 * Math.cos(phase) * up, wave * s, 0], [6, 0, 0]),
+      pelvis: [4 * up * s, wave * s, 0],
+      chest: [-6 * up * s, -2 * wave * s, 0],
+      tail: [10 * up, -wave * 1.5 * s, 0],
+      tailMid: [5 * up + 4 * Math.cos(phase), wave * Math.cos(phase), 0],
+      tailTip: [-5 * up, -wave * s, 0],
+      jaw: [-14 * up, 0, 0],
+    },
+    offset: [0, 0.04 * p.size * up * Math.sin(phase + Math.PI / 2) - 0.02 * p.size * up, 0],
+  };
+}
+
+/** Recoils from a blow: head jerks up with a yelp, tail tucked, knocked back onto braced legs. */
+function hit(t: number, p: BeastParams): BeastPose {
+  const d = beastDims(p);
+  const r = keys(t, [[0, 0], [0.25, 1], [1, 0]]);
+  return {
+    joints: {
+      ...legs(p, d, (leg) => (leg[0] === 'F' ? { swing: 10 * r } : { swing: -6 * r, bend: -10 * r })),
+      ...headRest(p, [14 * r, 0, 0], [16 * r, 0, 8 * r]),
+      ...tailRest(p, 0, -20 * r),
+      chest: [6 * r, 0, 0],
+      jaw: [-25 * r, 0, 0],
+    },
+    offset: [0, -0.03 * p.size * r, -0.06 * p.size * r],
+  };
+}
+
+/** Digging, looped: front paws scrape the ground in turn, head down over the hole, tail up. */
+function work(t: number, p: BeastParams): BeastPose {
+  const d = beastDims(p);
+  const phase = t * Math.PI * 2;
+  const up = 1 - p.sprawl;
+  // each paw reaches forward while lifted, then drags back along the ground
+  const paw = (a: number) => ({ swing: 20 + 25 * Math.sin(a), lift: Math.max(0, Math.cos(a)) });
+  return {
+    joints: {
+      ...legs(p, d, (leg) => (leg === 'FL' ? paw(phase) : leg === 'FR' ? paw(phase + Math.PI) : { swing: -10, bend: -15 })),
+      ...headRest(p, [-20, 0, 0], [-10 + 5 * Math.cos(2 * phase), 0, 0]),
+      ...tailRest(p, (15 * up + 4) * Math.sin(phase), 10),
+      chest: [-8, 0, 0],
+      jaw: [-6 * up, 0, 0],
+    },
+    offset: [0, -0.03 * p.size, 0],
+  };
+}
+
+/** A pack animal's plod: packs on the back, shorter strides, head low, sagging at each step. */
+function carry(t: number, p: BeastParams): BeastPose {
+  const pose = trot(t, p, 20);
+  const joints = { ...pose.joints };
+  const neck = joints.neck!;
+  joints.neck = [neck[0] - 10, neck[1], neck[2]];
+  const [x, y, z] = pose.offset ?? [0, 0, 0];
+  const sag = 0.02 * p.size * Math.abs(Math.cos(2 * t * Math.PI * 2));
+  return { ...pose, joints, offset: [x, y - sag, z], load: true };
+}
+
+/**
+ * Challenges the enemy: upright beasts rear onto their hind legs and paw the air, snarling;
+ * sprawled ones can't rear, so they lift the head, snap twice and lash the tail.
+ */
+function taunt(t: number, p: BeastParams): BeastPose {
+  const d = beastDims(p);
+  const up = 1 - p.sprawl;
+  const rear = keys(t, [[0, 0], [0.3, 1], [0.75, 1], [1, 0]]);
+  // each front paw strikes out in turn while reared up
+  const paw = (shift: number) => rear * (20 + 25 * Math.max(0, Math.sin((t - shift) * Math.PI * 6)));
+  const snap = keys(t, [[0, 0], [0.3, 0.4], [0.4, 1], [0.5, 0.2], [0.6, 1], [0.7, 0.2], [1, 0]]);
+  return {
+    joints: {
+      ...legs(p, d, (leg) =>
+        leg[0] === 'F'
+          ? { swing: paw(leg === 'FL' ? 0 : 1 / 6) * up, lift: rear * up, bend: -30 * rear * up }
+          : { swing: -35 * rear * up, bend: -20 * rear * up },
+      ),
+      ...headRest(p, [(-10 * up + 25 * p.sprawl) * rear, 0, 0], [8 * rear, 0, 0]),
+      ...tailRest(p, 30 * p.sprawl * Math.sin(t * Math.PI * 4), 10 * rear),
+      pelvis: [40 * up * rear, 0, 0],
+      jaw: [-(10 + 30 * snap) * rear, 0, 0],
+    },
+    offset: [0, 0.02 * p.size * up * rear, -0.08 * p.size * up * rear],
   };
 }
 
@@ -366,6 +477,21 @@ function groundWings(name: string, t: number): WingPose {
     case 'channel':
       // mantling: half spread and raised, pulsing
       return blendWing(FOLDED, spread(0.7 + 0.2 * Math.sin(phase)), 0.7);
+    case 'hit':
+      // flare out with the shock, then fold back
+      return blendWing(FOLDED, spread(0.6), keys(t, [[0, 0], [0.25, 0.8], [1, 0]]));
+    case 'run':
+    case 'carry': {
+      const [wing, tip] = FOLDED;
+      return [[wing[0], wing[1], wing[2] + 6 * Math.abs(Math.sin(phase))], tip];
+    }
+    case 'taunt':
+      // full threat display: spread wide and beating
+      return blendWing(FOLDED, spread(0.6 + 0.4 * Math.sin(phase * 2)), keys(t, [[0, 0], [0.25, 1], [0.8, 1], [1, 0]]));
+    case 'work': {
+      // half open for balance, head down
+      return blendWing(FOLDED, spread(0.3 + 0.1 * Math.sin(phase)), 0.25);
+    }
     default:
       // death: flung out as it falls, then folded under the body
       return blendWing(FOLDED, spread(keys(t, [[0, 0.5], [0.33, 1], [1, -0.5]])), keys(t, [[0, 0], [0.33, 0.8], [1, 0]]));
@@ -426,6 +552,11 @@ export function beastAnimations(counts: FrameCounts = DEFAULT_FRAME_COUNTS): Bea
     { name: 'cast', frames: counts.cast, fps: 8, loop: false, pose: cast },
     { name: 'death', frames: counts.death, fps: 6, loop: false, pose: death },
     { name: 'channel', frames: counts.channel, fps: 6, loop: true, pose: channel },
+    { name: 'hit', frames: counts.hit, fps: 10, loop: false, pose: hit },
+    { name: 'run', frames: counts.run, fps: 12, loop: true, pose: run },
+    { name: 'work', frames: counts.work, fps: 8, loop: true, pose: work },
+    { name: 'carry', frames: counts.carry, fps: 8, loop: true, pose: carry },
+    { name: 'taunt', frames: counts.taunt, fps: 8, loop: false, pose: taunt },
   ];
   return all.map((a) => ({ ...a, pose: withOpacity(withWings(a.name, a.pose)) }));
 }

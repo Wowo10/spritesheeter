@@ -25,6 +25,9 @@ const HOLD_FRAMES = 4;
 
 const NO_CLIP = '(none)';
 
+/** Animations an export includes until unchecked; the rest (spells, work) only for units that need them. */
+const BASIC_ANIMS: readonly AnimationName[] = ['idle', 'walk', 'attack', 'death'];
+
 // the big sizes are for buildings and other large models
 const FRAME_SIZES = [32, 48, 64, 96, 128, 160, 192, 256];
 const OUTLINES: Outline[] = ['none', 'inner', 'outer'];
@@ -59,6 +62,8 @@ const state = {
     fill: DEFAULT_LIGHTING.fill,
   },
   previewAnim: 'walk' as AnimationName,
+  /** Which rows go into the exported sheet; the previews always show them all. */
+  exportAnims: Object.fromEntries(ANIMATION_NAMES.map((n) => [n, BASIC_ANIMS.includes(n)])) as Record<AnimationName, boolean>,
   team: 'red' as TeamColor,
   /** What the sheet shows: the procedural unit or the loaded custom model. */
   source: 'unit' as 'unit' | 'model',
@@ -103,8 +108,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
  * stays behind, since its file can't travel in a URL. The objects are state's own.
  */
 function sharedSettings() {
-  const { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, team } = state;
-  return { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, team };
+  const { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, exportAnims, team } = state;
+  return { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, exportAnims, team };
 }
 
 /** Applies the settings of a share link the page was opened from, before the GUI is built. */
@@ -280,18 +285,30 @@ function exportSource(): Record<string, unknown> {
   };
 }
 
+/** The sheet as exported: only the checked animations, their rows packed without gaps. */
+function exportedSheet(): Sheet | null {
+  if (!sheet) return null;
+  const anims = rendered.filter((a) => state.exportAnims[a.name as AnimationName]);
+  if (anims.length === 0) {
+    alert(`None of the checked animations are in this sheet (it has ${rendered.map((a) => a.name).join(', ')}).`);
+    return null;
+  }
+  return packSheet(anims, anchorOf(state.sprite));
+}
+
 function exportSheet(): void {
-  if (!sheet) return;
+  const s = exportedSheet();
+  if (!s) return;
   const name = exportName();
   const image = `${name}-${state.team}.png`;
-  downloadPng(sheet, image, teamPalette(state.team));
-  downloadJson({ ...sheet.meta, image, imageTeam: state.team, ...exportSource() }, `${name}.json`);
+  downloadPng(s, image, teamPalette(state.team));
+  downloadJson({ ...s.meta, image, imageTeam: state.team, ...exportSource() }, `${name}.json`);
 }
 
 /** One PNG per team colour, plus a JSON listing them. Downloads are staggered so browsers accept them. */
 function exportAllTeams(): void {
-  if (!sheet) return;
-  const s = sheet;
+  const s = exportedSheet();
+  if (!s) return;
   const name = exportName();
   const images = Object.fromEntries(TEAM_COLOR_NAMES.map((t) => [t, `${name}-${t}.png`]));
   TEAM_COLOR_NAMES.forEach((t, i) => setTimeout(() => downloadPng(s, images[t], teamPalette(t)), i * 250));
@@ -528,8 +545,10 @@ state.sprite.thresholds.forEach((_, i) =>
 const viewFolder = restoreOpen(gui.addFolder('View'), true);
 viewFolder.add(view, 'spriteView').name('sprite camera');
 
-gui.add(actions, 'export').name('💾 export PNG + JSON');
-gui.add(actions, 'exportAllTeams').name('💾 export all team colors');
+const exportFolder = restoreOpen(gui.addFolder('Export'));
+for (const name of ANIMATION_NAMES) exportFolder.add(state.exportAnims, name);
+exportFolder.add(actions, 'export').name('💾 export PNG + JSON');
+exportFolder.add(actions, 'exportAllTeams').name('💾 export all team colors');
 
 // --- custom model -------------------------------------------------------------
 

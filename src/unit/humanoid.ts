@@ -19,6 +19,8 @@ export interface Humanoid {
   hipHeight: number;
   /** Spell effect, placed and sized by poses; hidden unless a pose shows it. */
   fx: Group;
+  /** Sack carried over a shoulder; hidden unless a pose shows it, on the side it names. */
+  load: Group;
   /** Ground shadow, if the unit has one; stays on the ground and shrinks as the hips rise. */
   shadow: Mesh | null;
 }
@@ -97,6 +99,17 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   } else {
     link(joints.cape, joints.capeTip, [0, 0, 0]);
   }
+
+  // over the left shoulder, hanging down the back; poses move it to the right one
+  const load = new Group();
+  load.name = 'load';
+  load.visible = false;
+  // big enough to read at 32 px: about the size of the torso, bulging over the shoulder
+  load.position.set(torsoW * 0.3, torsoLen + 0.04, -torsoD * 0.3);
+  load.userData.x = load.position.x;
+  spine.add(load);
+  b.box(load, 'bone', [torsoW * 0.8, torsoLen * 0.8, torsoD * 1.15], [0, -torsoLen * 0.1, -torsoD * 0.25], [-15, 0, 0]);
+  b.box(load, 'leather', [torsoW * 0.3, 0.07, torsoD * 0.5], [0, torsoLen * 0.32, torsoD * 0.05]); // tied neck
 
   link(spine, joints.head, [0, torsoLen, 0]);
   b.box(joints.head, p.skin, [head * 0.45, 0.06, head * 0.45], [0, 0.03, 0]); // neck
@@ -187,7 +200,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     b.box(fx, p.magic, [0.07, 0.07, 0.07], [Math.cos(a) * 0.27, Math.sin(a) * 0.27, 0], [45, 45, 0]);
   }
 
-  return { root, body, joints, hipHeight, fx, shadow };
+  return { root, body, joints, hipHeight, fx, load, shadow };
 }
 
 export function applyPose(unit: Humanoid, pose: Pose): void {
@@ -207,6 +220,9 @@ export function applyPose(unit: Humanoid, pose: Pose): void {
     const s = Math.min(1, Math.max(0.45, 1 - 1.5 * y));
     unit.shadow.scale.set(s, 1, s);
   }
+
+  unit.load.visible = pose.load !== undefined;
+  unit.load.position.x = (pose.load === 'R' ? -1 : 1) * unit.load.userData.x;
 
   const scale = pose.fx?.scale ?? 0;
   unit.fx.visible = scale > 0.01;

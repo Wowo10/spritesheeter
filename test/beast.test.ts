@@ -91,6 +91,46 @@ describe('beast animations', () => {
   });
 });
 
+describe('hit, run, work and carry', () => {
+  const wolf = BEAST_PRESETS.wolf;
+
+  it('close their loops, and hit recovers to where it started', () => {
+    for (const p of [wolf, BEAST_PRESETS.crocodile, BEAST_PRESETS.dragon]) {
+      for (const name of ['hit', 'run', 'work', 'carry', 'taunt']) {
+        const a = anim(name).pose(0, p, 0.5);
+        const b = anim(name).pose(1, p, 0.5);
+        for (const [joint, rot] of Object.entries(a.joints)) {
+          rot.forEach((v, i) => expect(b.joints[joint as (typeof BEAST_JOINTS)[number]]![i]).toBeCloseTo(v));
+        }
+      }
+    }
+  });
+
+  it('gallops with the front legs together and the hind legs together', () => {
+    const swing = (leg: string, t: number) => anim('run').pose(t, wolf, 0.5).joints[`leg${leg}` as 'legFL']![0];
+    expect(Math.sign(swing('FL', 0.25))).toBe(Math.sign(swing('FR', 0.25)));
+    expect(Math.sign(swing('BL', 0.25))).toBe(Math.sign(swing('BR', 0.25)));
+  });
+
+  it('wears packs only while carrying', () => {
+    expect(anim('carry').pose(0, wolf, 0.5).load).toBe(true);
+    for (const name of ['idle', 'walk', 'run', 'work']) expect(anim(name).pose(0, wolf, 0.5).load).toBeUndefined();
+    const b = buildBeast(wolf, mats);
+    applyBeastPose(b, anim('walk').pose(0, wolf, b.hipHeight));
+    expect(b.load.visible).toBe(false);
+    applyBeastPose(b, anim('carry').pose(0, wolf, b.hipHeight));
+    expect(b.load.visible).toBe(true);
+    disposeBeast(b);
+  });
+});
+
+describe('taunt', () => {
+  it('upright beasts rear up, sprawled ones stay down', () => {
+    expect(bounds(BEAST_PRESETS.wolf, 'taunt', 0.5).max.y).toBeGreaterThan(bounds(BEAST_PRESETS.wolf, 'idle', 0).max.y * 1.2);
+    expect(anim('taunt').pose(0.5, { ...BEAST_PRESETS.crocodile, sprawl: 1 }, 0.3).joints.pelvis![0]).toBe(0);
+  });
+});
+
 describe('wings', () => {
   const griffin = BEAST_PRESETS.griffin;
   const grounded = { ...griffin, flying: false };

@@ -56,14 +56,14 @@ With **type** set to `beast`, the unit is a four-legged animal. Presets: wolf, h
 - **magic breath:** the beast spits its spell in `cast` and breathes a steady stream of it in `channel`
 - **opacity, glowing eyes, ground shadow:** as for humanoids. A see-through beast fades away when it dies.
 
-Beasts fill the same sheet rows as humanoids: `attack` is a bite, `cast` is a roar (or spitting the spell, with magic breath), `death` keels over, and `channel` is a snarling crouch (or the breath stream). Long beasts like crocodiles nearly fill a 32 px frame; use 48 px or larger to give them room.
+Beasts fill the same sheet rows as humanoids: `attack` is a bite, `cast` is a roar (or spitting the spell, with magic breath), `death` keels over, `channel` is a snarling crouch (or the breath stream), `hit` is a yelp and recoil, `run` is a gallop (or a fast scramble for sprawled beasts), `work` digs with the front paws, `carry` plods along with packs on its back, and `taunt` rears up pawing the air (sprawled beasts snap and lash the tail instead; winged ones spread their wings). Long beasts like crocodiles nearly fill a 32 px frame; use 48 px or larger to give them room.
 
 ### Custom model
 
 Load a **.glb / .gltf / .fbx / .obj** with **📂 load**, or drag it onto the page. For a `.gltf`, pick or drop its `.bin` and textures along with it.
 
 - **add animations from file:** adds clips from animation-only files, such as Mixamo "without skin" downloads. Dropping such a file on the page does the same.
-- **Sheet rows:** choose which clip fills each sheet row (idle, walk, attack, cast, death, channel). Rows are guessed from the clip names, and rows set to `(none)` are left out of the sheet. Looping clips are rendered in place, so root motion doesn't move the unit out of frame.
+- **Sheet rows:** choose which clip fills each sheet row (idle, walk, attack, cast, death, channel, hit, run, work, carry, taunt). Rows are guessed from the clip names, and rows set to `(none)` are left out of the sheet. Looping clips are rendered in place, so root motion doesn't move the unit out of frame.
 - **height / turn:** scale the model, and fix its facing if it was exported pointing the wrong way.
 - **Materials → palette:** map each of the model's materials to a palette ramp. Map a material to `team` to make it team-coloured.
 
@@ -71,7 +71,14 @@ Use **show** to switch between the procedural unit and the loaded model.
 
 ### Animation
 
-Pick which animation to **preview**, and set the frame count (1–12) for each one: `idle`, `walk`, `attack`, `cast`, `death`, `channel`. `channel` is a looping, sustained spell pose.
+Pick which animation to **preview**, and set the frame count (1–12) for each one: `idle`, `walk`, `attack`, `cast`, `death`, `channel`, `hit`, `run`, `work`, `carry`, `taunt`.
+
+- `channel`: a looping, sustained spell pose.
+- `hit`: a quick flinch when the unit takes damage, ending back in its stance.
+- `run`: a faster gait than `walk`, leaning forward with long strides. Floaters rush along, and shamblers lurch.
+- `work`: the tool or weapon hand swings its item overhead and down into the ground, with an empty other hand gripping it too. It reads as mining, chopping, digging or building.
+- `carry`: walks with a sack over the shoulder of the empty hand (the left if both or neither are empty).
+- `taunt`: plays once. Raises the weapon overhead and shakes it twice, shouting, while an empty free hand beckons.
 
 ### Sprite
 
@@ -98,6 +105,8 @@ The settings travel as URL-safe base64 of their JSON in the `s` query parameter 
 A custom model isn't included in the link, because its file can't travel in a URL. The link still carries the sprite, lighting and animation settings.
 
 ## Exporting
+
+The **Export** folder has a checkbox for each animation. Only the checked ones go into the exported sheet, packed top to bottom without gaps. By default that's `idle`, `walk`, `attack` and `death`. Check `cast` and `channel` for spellcasters, and `work` and `carry` for workers. The previews always show every animation. The checkboxes are saved in share links too.
 
 - **💾 export PNG + JSON:** writes `<name>-<team>.png` in the selected **team color**, plus `<name>.json`.
 - **💾 export all team colors:** writes one PNG per team colour (red, blue, green, violet, orange, black, white, yellow) and a single JSON that lists them all.

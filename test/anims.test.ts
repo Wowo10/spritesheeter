@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { humanoidAnimations } from '../src/anim/humanoid-anims';
 import type { JointName } from '../src/anim/types';
-import { handItems, PRESETS, type HandItem, type UnitParams } from '../src/unit/params';
+import { MaterialLibrary } from '../src/render/materials';
+import { applyPose, buildHumanoid, disposeHumanoid } from '../src/unit/humanoid';
+import { GAITS, handItems, PRESETS, type HandItem, type UnitParams } from '../src/unit/params';
 
 const attack = humanoidAnimations().find((a) => a.name === 'attack')!;
 const unit = (rightHand: HandItem, leftHand: HandItem): UnitParams => ({ ...PRESETS.swordsman, rightHand, leftHand });
@@ -82,7 +84,7 @@ describe('channel', () => {
 
   it('loops, and comes after the older rows so their positions in a sheet stay put', () => {
     const names = humanoidAnimations().map((a) => a.name);
-    expect(names.slice(-2)).toEqual(['death', 'channel']);
+    expect(names.slice(0, 6)).toEqual(['idle', 'walk', 'attack', 'cast', 'death', 'channel']);
     expect(channel.loop).toBe(true);
   });
 
@@ -161,5 +163,109 @@ describe('cape motion', () => {
 
   it('streams further back when walking than when standing', () => {
     expect(flare('walk', 0.25)).toBeGreaterThan(flare('idle', 0.25));
+  });
+});
+
+describe('hit, run, work and carry', () => {
+  const anims = humanoidAnimations();
+  const anim = (name: string) => anims.find((a) => a.name === name)!;
+
+  it('come after the older rows, hit as a one-shot and the rest looping', () => {
+    expect(anims.map((a) => a.name).slice(6, 10)).toEqual(['hit', 'run', 'work', 'carry']);
+    expect(anim('hit').loop).toBe(false);
+    for (const name of ['run', 'work', 'carry']) expect(anim(name).loop).toBe(true);
+  });
+
+  it('close their loops in every gait, and hit recovers to where it started', () => {
+    for (const gait of GAITS) {
+      const u = { ...PRESETS.worker, gait };
+      for (const name of ['hit', 'run', 'work', 'carry', 'taunt']) {
+        const a = anim(name).pose(0, u, 0.8);
+        const b = anim(name).pose(1, u, 0.8);
+        for (const [joint, rot] of Object.entries(a.joints)) {
+          rot.forEach((v, i) => expect(b.joints[joint as JointName]![i]).toBeCloseTo(v));
+        }
+        a.hips!.forEach((v, i) => expect(b.hips![i]).toBeCloseTo(v));
+      }
+    }
+  });
+
+  it('hit throws the body back', () => {
+    const p = anim('hit').pose(0.25, PRESETS.swordsman, 0.8);
+    expect(p.joints.spine![0]).toBeGreaterThan(5);
+    expect(p.hips![2]).toBeLessThan(0);
+  });
+
+  it('runs with longer strides than it walks', () => {
+    const stride = (name: string) => anim(name).pose(0.25, PRESETS.swordsman, 0.8).joints.hipL![0] - anim(name).pose(0.75, PRESETS.swordsman, 0.8).joints.hipL![0];
+    expect(stride('run')).toBeGreaterThan(stride('walk') * 1.3);
+  });
+
+  it('work raises the tool overhead, the empty hand gripping it too', () => {
+    const top = anim('work').pose(0.35, PRESETS.worker, 0.8).joints;
+    expect(top.shoulderR![0]).toBeGreaterThan(150);
+    expect(top.shoulderL![0]).toBeGreaterThan(150);
+    // a shield stays where it is
+    const u = unit('hammer', 'kiteShield');
+    expect(pitch(u, 0, 'shoulderL')).toBe(anim('work').pose(0.35, u, 0.8).joints.shoulderL![0]);
+  });
+
+  it('works with a left-hand tool', () => {
+    const j = anim('work').pose(0.35, unit('none', 'pickaxe'), 0.8).joints;
+    expect(j.shoulderL![0]).toBeGreaterThan(150);
+  });
+
+  it('carries the sack on the shoulder of the empty hand', () => {
+    const load = (u: UnitParams) => anim('carry').pose(0.5, u, 0.8).load;
+    expect(load(PRESETS.worker)).toBe('L');
+    expect(load(unit('none', 'kiteShield'))).toBe('R');
+    expect(load(unit('none', 'none'))).toBe('L');
+    for (const name of ['idle', 'walk', 'run', 'work']) expect(anim(name).pose(0.5, PRESETS.worker, 0.8).load).toBeUndefined();
+  });
+
+  it('shows the sack only while carrying, over the shoulder the pose names', () => {
+    const u = buildHumanoid(PRESETS.worker, new MaterialLibrary());
+    applyPose(u, anim('walk').pose(0, PRESETS.worker, u.hipHeight));
+    expect(u.load.visible).toBe(false);
+    applyPose(u, { ...anim('carry').pose(0, PRESETS.worker, u.hipHeight), load: 'L' });
+    expect(u.load.visible).toBe(true);
+    const left = u.load.position.x;
+    applyPose(u, { ...anim('carry').pose(0, PRESETS.worker, u.hipHeight), load: 'R' });
+    expect(u.load.position.x).toBeCloseTo(-left);
+    expect(left).toBeGreaterThan(0);
+    disposeHumanoid(u);
+  });
+});
+
+describe('taunt', () => {
+  const taunt = humanoidAnimations().find((a) => a.name === 'taunt')!;
+
+  it('is a one-shot after carry', () => {
+    expect(humanoidAnimations().map((a) => a.name).slice(-2)).toEqual(['carry', 'taunt']);
+    expect(taunt.loop).toBe(false);
+  });
+
+  it('starts and ends in the attack stance', () => {
+    const stance = attack.pose(0, PRESETS.swordsman, 0.8).joints;
+    for (const t of [0, 1]) {
+      const j = taunt.pose(t, PRESETS.swordsman, 0.8).joints;
+      for (const name of ['shoulderL', 'elbowL', 'handL', 'shoulderR', 'elbowR', 'handR'] as const) {
+        j[name]!.forEach((v, i) => expect(v).toBeCloseTo(stance[name]![i]));
+      }
+    }
+  });
+
+  it('raises the weapon overhead and holds it upright', () => {
+    const j = taunt.pose(0.25, PRESETS.swordsman, 0.8).joints;
+    expect(j.shoulderR![0]).toBeGreaterThan(150);
+    expect(j.shoulderR![0] + j.elbowR![0] + j.handR![0]).toBeCloseTo(180);
+    // the shield stays where it is
+    expect(j.shoulderL).toEqual(attack.pose(0, PRESETS.swordsman, 0.8).joints.shoulderL);
+  });
+
+  it('beckons with an empty other hand, and raises a left-hand weapon', () => {
+    const elbow = (t: number) => taunt.pose(t, unit('axe', 'none'), 0.8).joints.elbowL![0];
+    expect(elbow(0.45)).toBeGreaterThan(elbow(0.3) + 50);
+    expect(taunt.pose(0.25, unit('none', 'axe'), 0.8).joints.shoulderL![0]).toBeGreaterThan(150);
   });
 });

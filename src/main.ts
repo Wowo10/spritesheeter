@@ -7,7 +7,7 @@ import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
 import { CLOTH_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS } from './render/palette';
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings } from './render/spriteRenderer';
 import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
-import { ARMORS, HELMETS, PRESETS, randomUnit, SHIELDS, WEAPONS, type UnitParams } from './unit/params';
+import { ARMORS, HAND_ITEMS, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
 import { Preview3D } from './ui/preview3d';
 import { CompassPreview } from './ui/spritePreview';
 import './style.css';
@@ -109,31 +109,48 @@ const actions = {
 };
 unitFolder.add(actions, 'randomize').name('🎲 randomize');
 
+/**
+ * A bow takes both hands: picking one empties the other hand, and picking
+ * anything for the other hand puts the bow away.
+ */
+function onHandChange(key: 'rightHand' | 'leftHand', item: HandItem): void {
+  const other = key === 'rightHand' ? 'leftHand' : 'rightHand';
+  if (item === 'bow' || (item !== 'none' && state.unit[other] === 'bow')) {
+    state.unit[other] = 'none';
+    refreshGui();
+  }
+  rebuild();
+}
+
 let unitControllers: Controller[] = [];
 function rebindUnit(): void {
   unitControllers.forEach((c) => c.destroy());
   const u = state.unit;
-  unitControllers = [
-    unitFolder.add(u, 'seed').onFinishChange((seed: number) => {
-      state.preset = 'random';
-      state.unit = randomUnit(seed);
-      // rebinding destroys this very controller, so leave its callback first
-      setTimeout(rebindUnit);
-      rebuild();
-    }),
+  const seed = unitFolder.add(u, 'seed').onFinishChange((seed: number) => {
+    state.preset = 'random';
+    state.unit = randomUnit(seed);
+    // rebinding destroys this very controller, so leave its callback first
+    setTimeout(rebindUnit);
+    rebuild();
+  });
+  const hand = (key: 'rightHand' | 'leftHand', label: string) =>
+    unitFolder.add(u, key, HAND_ITEMS).name(label).onChange((item: HandItem) => onHandChange(key, item));
+  const plain: Controller[] = [
     unitFolder.add(u, 'height', 0.8, 1.25, 0.01),
     unitFolder.add(u, 'bulk', 0.75, 1.45, 0.01),
     unitFolder.add(u, 'headSize', 0.8, 1.4, 0.01),
     unitFolder.add(u, 'helmet', HELMETS),
     unitFolder.add(u, 'armor', ARMORS),
-    unitFolder.add(u, 'weapon', WEAPONS),
-    unitFolder.add(u, 'shield', SHIELDS),
+  ];
+  const hands = [hand('rightHand', 'right hand'), hand('leftHand', 'left hand')];
+  const colors = [
     unitFolder.add(u, 'skin', SKIN_RAMPS),
     unitFolder.add(u, 'cloth', CLOTH_RAMPS),
     unitFolder.add(u, 'metal', METAL_RAMPS),
     unitFolder.add(u, 'hair', RAMP_NAMES),
   ];
-  unitControllers.slice(1).forEach((c) => c.onChange(rebuild));
+  [...plain, ...colors].forEach((c) => c.onChange(rebuild));
+  unitControllers = [seed, ...plain, ...hands, ...colors];
   refreshGui();
 }
 rebindUnit();

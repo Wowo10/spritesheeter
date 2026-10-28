@@ -14,10 +14,16 @@ describe('rng', () => {
     expect(randomUnit(1234)).not.toEqual(randomUnit(1235));
   });
 
-  it('never gives archers a shield', () => {
+  it('gives archers an empty draw hand', () => {
+    let archers = 0;
     for (let seed = 0; seed < 200; seed++) {
       const u = randomUnit(seed);
-      if (u.weapon === 'bow') expect(u.shield).toBe('none');
+      if (u.leftHand === 'bow') {
+        archers++;
+        expect(u.rightHand).toBe('none');
+      }
+      expect(u.rightHand).not.toBe('bow');
     }
+    expect(archers).toBeGreaterThan(0);
   });
 });

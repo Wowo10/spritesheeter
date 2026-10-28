@@ -14,7 +14,10 @@ import {
 } from 'three';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
-import type { Helmet, Shield, UnitParams, Weapon } from './params';
+import type { Helmet, UnitParams } from './params';
+
+export type WeaponItem = 'sword' | 'axe' | 'hammer' | 'spear';
+export type ShieldItem = 'roundShield' | 'kiteShield';
 
 type V3 = [number, number, number];
 
@@ -89,7 +92,7 @@ export function buildHelmet(b: PartBuilder, head: Object3D, kind: Helmet, fit: H
 }
 
 /** Weapons hang from the grip along -Y (the continuation of the forearm), edges facing +Z. */
-export function buildWeapon(b: PartBuilder, hand: Object3D, kind: Weapon, p: UnitParams): void {
+export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p: UnitParams): void {
   switch (kind) {
     case 'sword':
       b.box(hand, 'leather', [0.05, 0.16, 0.05], [0, 0, 0]);
@@ -111,9 +114,6 @@ export function buildWeapon(b: PartBuilder, hand: Object3D, kind: Weapon, p: Uni
       b.box(hand, 'wood', [0.07, 1.75, 0.07], [0, -0.38, 0]);
       b.cone(hand, 'steel', 0.09, 0.3, [0, -1.39, 0], [180, 0, 0]);
       break;
-    case 'bow':
-      // bows are held in the off hand, see buildBow
-      break;
   }
 }
 
@@ -131,18 +131,25 @@ export function buildQuiver(b: PartBuilder, spine: Object3D, torsoLen: number, t
 }
 
 /**
- * Shields mount on the off hand. `forearmPitchDeg` is the forearm's resting pitch,
+ * Shields mount on either hand. `forearmPitchDeg` is the forearm's resting pitch,
  * which the mount cancels so the shield faces forward in the stance pose.
  */
-export function buildShield(b: PartBuilder, hand: Object3D, kind: Shield, forearmPitchDeg: number, p: UnitParams): void {
-  if (kind === 'none') return;
+export function buildShield(
+  b: PartBuilder,
+  hand: Object3D,
+  kind: ShieldItem,
+  forearmPitchDeg: number,
+  /** +1 on the left hand, -1 on the right: the side away from the body. */
+  outward: number,
+  p: UnitParams,
+): void {
   const mount = new Object3D();
   mount.rotation.x = forearmPitchDeg * DEG;
   // in front of the fist, so the hand never pokes through
-  mount.position.set(0.02, 0.04, 0.06);
+  mount.position.set(0.02 * outward, 0.04, 0.06);
   hand.add(mount);
 
-  if (kind === 'round') {
+  if (kind === 'roundShield') {
     b.cylinder(mount, p.metal, 0.25, 0.03, [0, 0, 0.04], [90, 0, 0], 12);
     b.cylinder(mount, p.cloth, 0.21, 0.04, [0, 0, 0.06], [90, 0, 0], 12);
     b.dome(mount, p.metal, 0.06, [0, 0, 0.08]).rotation.x = 90 * DEG;

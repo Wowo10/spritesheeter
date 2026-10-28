@@ -2,12 +2,12 @@ import { Group, Mesh, Object3D } from 'three';
 import { JOINTS, type JointName, type Pose } from '../anim/types';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
-import { effectiveShield, type UnitParams } from './params';
-import { buildBow, buildHelmet, buildQuiver, buildShield, buildWeapon, PartBuilder } from './parts';
+import { handItems, itemKind, type UnitParams } from './params';
+import { buildBow, buildHelmet, buildQuiver, buildShield, buildWeapon, PartBuilder, type ShieldItem, type WeaponItem } from './parts';
 
 const DEG = Math.PI / 180;
 
-/** Resting forearm pitch of the shield arm (shoulder + elbow in the stance pose). */
+/** Resting forearm pitch of a shield arm (shoulder + elbow in the stance pose). */
 const SHIELD_FOREARM_PITCH = 80;
 
 export interface Humanoid {
@@ -64,6 +64,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   const hipDrop = 0.04;
   const hipHeight = hipDrop + thigh + shin + footH;
   const o = outfit(p);
+  const items = handItems(p);
 
   const joints = Object.fromEntries(JOINTS.map((name) => [name, new Group()])) as Record<JointName, Group>;
   for (const [name, g] of Object.entries(joints)) g.name = name;
@@ -88,7 +89,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   if (o.tabard) {
     b.box(spine, p.cloth, [torsoW * 0.62, torsoLen * 0.95, torsoD + 0.03], [0, torsoLen * 0.42, 0]);
   }
-  if (p.weapon === 'bow') buildQuiver(b, spine, torsoLen, torsoD);
+  if (items.L === 'bow' || items.R === 'bow') buildQuiver(b, spine, torsoLen, torsoD);
 
   link(spine, joints.head, [0, torsoLen, 0]);
   b.box(joints.head, p.skin, [head * 0.45, 0.06, head * 0.45], [0, 0.03, 0]); // neck
@@ -112,9 +113,19 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     const grip = new Group();
     grip.position.y = -armT * 0.4;
     hand.add(grip);
-    if (side === 'R') buildWeapon(b, grip, p.weapon, p);
-    else if (p.weapon === 'bow') buildBow(b, grip);
-    else buildShield(b, grip, effectiveShield(p), SHIELD_FOREARM_PITCH, p);
+    const item = items[side];
+    switch (itemKind(item)) {
+      case 'chop':
+      case 'thrust':
+        buildWeapon(b, grip, item as WeaponItem, p);
+        break;
+      case 'shield':
+        buildShield(b, grip, item as ShieldItem, SHIELD_FOREARM_PITCH, side === 'L' ? 1 : -1, p);
+        break;
+      case 'bow':
+        buildBow(b, grip);
+        break;
+    }
   }
 
   for (const side of ['L', 'R'] as const) {

@@ -3,13 +3,12 @@ import { METAL_RAMPS, SKIN_RAMPS, type RampName } from '../render/palette';
 
 export const HELMETS = ['none', 'cap', 'full', 'horned', 'hood'] as const;
 export const ARMORS = ['none', 'leather', 'chain', 'plate'] as const;
-export const WEAPONS = ['sword', 'axe', 'hammer', 'spear', 'bow'] as const;
-export const SHIELDS = ['none', 'round', 'kite'] as const;
+export const HAND_ITEMS = ['none', 'sword', 'axe', 'hammer', 'spear', 'roundShield', 'kiteShield', 'bow'] as const;
 
 export type Helmet = (typeof HELMETS)[number];
 export type Armor = (typeof ARMORS)[number];
-export type Weapon = (typeof WEAPONS)[number];
-export type Shield = (typeof SHIELDS)[number];
+export type HandItem = (typeof HAND_ITEMS)[number];
+export type Hand = 'L' | 'R';
 
 export interface UnitParams {
   seed: number;
@@ -20,25 +19,43 @@ export interface UnitParams {
   headSize: number;
   helmet: Helmet;
   armor: Armor;
-  weapon: Weapon;
-  shield: Shield;
+  rightHand: HandItem;
+  leftHand: HandItem;
   skin: RampName;
   cloth: RampName;
   metal: RampName;
   hair: RampName;
 }
 
-export type WeaponStyle = 'chop' | 'thrust' | 'bow';
+/** How an item is held and swung; drives both the model and the animations. */
+export type ItemKind = 'none' | 'chop' | 'thrust' | 'shield' | 'bow';
 
-export function weaponStyle(weapon: Weapon): WeaponStyle {
-  if (weapon === 'spear') return 'thrust';
-  if (weapon === 'bow') return 'bow';
-  return 'chop';
+export function itemKind(item: HandItem): ItemKind {
+  switch (item) {
+    case 'sword':
+    case 'axe':
+    case 'hammer':
+      return 'chop';
+    case 'spear':
+      return 'thrust';
+    case 'roundShield':
+    case 'kiteShield':
+      return 'shield';
+    default:
+      return item;
+  }
 }
 
-/** Bows need both hands, so they never come with a shield. */
-export function effectiveShield(p: UnitParams): Shield {
-  return p.weapon === 'bow' ? 'none' : p.shield;
+export const otherHand = (h: Hand): Hand => (h === 'L' ? 'R' : 'L');
+
+/**
+ * What each hand actually holds. A bow needs both hands (the other one draws the string),
+ * so it empties the other hand; with two bows the left one wins.
+ */
+export function handItems(p: UnitParams): Record<Hand, HandItem> {
+  if (p.leftHand === 'bow') return { L: 'bow', R: 'none' };
+  if (p.rightHand === 'bow') return { L: 'none', R: 'bow' };
+  return { L: p.leftHand, R: p.rightHand };
 }
 
 const BASE: UnitParams = {
@@ -48,8 +65,8 @@ const BASE: UnitParams = {
   headSize: 1,
   helmet: 'cap',
   armor: 'chain',
-  weapon: 'sword',
-  shield: 'kite',
+  rightHand: 'sword',
+  leftHand: 'kiteShield',
   skin: 'skin',
   cloth: 'team',
   metal: 'steel',
@@ -57,26 +74,41 @@ const BASE: UnitParams = {
 };
 
 export const PRESETS: Record<string, UnitParams> = {
-  swordsman: { ...BASE, helmet: 'full', armor: 'chain', weapon: 'sword', shield: 'kite' },
+  swordsman: { ...BASE, helmet: 'full', armor: 'chain', rightHand: 'sword', leftHand: 'kiteShield' },
   axeman: {
     ...BASE,
     bulk: 1.25,
     headSize: 1.1,
     helmet: 'horned',
     armor: 'leather',
-    weapon: 'axe',
-    shield: 'round',
+    rightHand: 'axe',
+    leftHand: 'roundShield',
     skin: 'greenSkin',
     metal: 'bronze',
   },
-  spearman: { ...BASE, height: 1.05, bulk: 0.9, helmet: 'cap', armor: 'leather', weapon: 'spear', shield: 'round' },
-  archer: { ...BASE, bulk: 0.85, helmet: 'hood', armor: 'leather', weapon: 'bow', shield: 'none', skin: 'paleSkin' },
-  knight: { ...BASE, bulk: 1.15, helmet: 'full', armor: 'plate', weapon: 'hammer', shield: 'kite', metal: 'gold' },
+  spearman: { ...BASE, height: 1.05, bulk: 0.9, helmet: 'cap', armor: 'leather', rightHand: 'spear', leftHand: 'roundShield' },
+  archer: { ...BASE, bulk: 0.85, helmet: 'hood', armor: 'leather', rightHand: 'none', leftHand: 'bow', skin: 'paleSkin' },
+  knight: { ...BASE, bulk: 1.15, helmet: 'full', armor: 'plate', rightHand: 'hammer', leftHand: 'kiteShield', metal: 'gold' },
+  berserker: {
+    ...BASE,
+    bulk: 1.3,
+    headSize: 1.1,
+    helmet: 'horned',
+    armor: 'none',
+    rightHand: 'axe',
+    leftHand: 'axe',
+    skin: 'greenSkin',
+  },
+  duelist: { ...BASE, bulk: 0.9, helmet: 'none', armor: 'leather', rightHand: 'sword', leftHand: 'sword', hair: 'yellow' },
+  shieldbearer: { ...BASE, bulk: 1.2, helmet: 'full', armor: 'plate', rightHand: 'none', leftHand: 'kiteShield' },
 };
+
+const MAIN_HAND: HandItem[] = ['sword', 'axe', 'hammer', 'spear', 'sword', 'axe', 'none'];
+const OFF_HAND: HandItem[] = ['roundShield', 'kiteShield', 'roundShield', 'kiteShield', 'none', 'sword', 'axe'];
 
 export function randomUnit(seed: number): UnitParams {
   const rng = mulberry32(seed);
-  const weapon = pick(rng, WEAPONS);
+  const archer = rng() < 0.15;
   return {
     seed,
     height: round2(range(rng, 0.9, 1.12)),
@@ -84,8 +116,8 @@ export function randomUnit(seed: number): UnitParams {
     headSize: round2(range(rng, 0.9, 1.2)),
     helmet: pick(rng, HELMETS),
     armor: pick(rng, ARMORS),
-    weapon,
-    shield: weapon === 'bow' ? 'none' : pick(rng, SHIELDS),
+    rightHand: archer ? 'none' : pick(rng, MAIN_HAND),
+    leftHand: archer ? 'bow' : pick(rng, OFF_HAND),
     skin: pick(rng, SKIN_RAMPS),
     cloth: 'team',
     metal: pick(rng, METAL_RAMPS),

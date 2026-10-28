@@ -17,6 +17,9 @@ export const JOINTS = [
   // two-segment cape hanging from the upper back; pitch < 0 lifts it backward
   'cape',
   'capeTip',
+  // a ghost's wisp below the hips, two segments like the cape; pitch < 0 trails it backward
+  'tail',
+  'tailTip',
 ] as const;
 
 export type JointName = (typeof JOINTS)[number];
@@ -35,8 +38,13 @@ export interface Pose {
   hips?: [number, number, number];
   /** Turn of the whole body around the vertical axis, in degrees, on top of the facing direction. */
   turn?: number;
-  /** Spell effect: position relative to the unit origin (facing +Z) and size; hidden when absent. */
-  fx?: { pos: [number, number, number]; scale: number };
+  /**
+   * Spell effect: position relative to the unit origin (facing +Z), size, and turn of its sparks
+   * around the facing axis in degrees; hidden when absent.
+   */
+  fx?: { pos: [number, number, number]; scale: number; spin?: number };
+  /** How much of the sprite is drawn, 0-1, as an ordered dither; 1 when absent. */
+  opacity?: number;
 }
 
 export interface AnimationDef {

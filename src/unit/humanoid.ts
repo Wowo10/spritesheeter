@@ -1,4 +1,4 @@
-import { Group, IcosahedronGeometry, Mesh, Object3D } from 'three';
+import { CylinderGeometry, Group, IcosahedronGeometry, Mesh, Object3D } from 'three';
 import { JOINTS, type JointName, type Pose } from '../anim/types';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
@@ -19,6 +19,8 @@ export interface Humanoid {
   hipHeight: number;
   /** Spell effect, placed and sized by poses; hidden unless a pose shows it. */
   fx: Group;
+  /** Ground shadow, if the unit has one; stays on the ground and shrinks as the hips rise. */
+  shadow: Mesh | null;
 }
 
 interface Outfit {
@@ -70,7 +72,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   link(hips, spine, [0, 0.06, 0]);
   b.box(spine, o.torso, [(hipW + torsoW) / 2 * 0.88, torsoLen * 0.5, torsoD * 0.92], [0, torsoLen * 0.25, 0]);
   b.box(spine, o.torso, [torsoW, torsoLen * 0.55, torsoD], [0, torsoLen * 0.72, 0]);
-  b.box(spine, 'leather', [hipW * 0.92, 0.06, torsoD * 0.98], [0, 0.02, 0]); // belt
+  if (p.body !== 'ghost') b.box(spine, 'leather', [hipW * 0.92, 0.06, torsoD * 0.98], [0, 0.02, 0]); // belt
   if (o.tabard) {
     b.box(spine, p.cloth, [torsoW * 0.62, torsoLen * 0.95, torsoD + 0.03], [0, torsoLen * 0.42, 0]);
   }
@@ -101,6 +103,9 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   const headCenter = 0.05 + head / 2;
   b.box(joints.head, p.skin, [head, head * 1.05, head], [0, headCenter, 0]);
   buildHelmet(b, joints.head, p.helmet, { size: head, centerY: headCenter }, p);
+  if (p.glowEyes) {
+    for (const side of [1, -1]) b.box(joints.head, p.magic, [head * 0.2, head * 0.13, 0.03], [side * head * 0.22, headCenter + head * 0.05, head / 2 + 0.01]);
+  }
 
   for (const side of ['L', 'R'] as const) {
     const x = (side === 'L' ? 1 : -1) * (torsoW / 2 + armT / 2);
@@ -136,15 +141,39 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     }
   }
 
+  // a ghost's legs are joints without meshes, so every pose still works on it
+  const ghost = p.body === 'ghost';
   for (const side of ['L', 'R'] as const) {
     const x = (side === 'L' ? 1 : -1) * hipW * 0.24;
     const hip = joints[`hip${side}`];
     const knee = joints[`knee${side}`];
     link(hips, hip, [x, -hipDrop, 0]);
-    b.box(hip, o.thigh, [legT, thigh, legT], [0, -thigh / 2, 0]);
     link(hip, knee, [0, -thigh, 0]);
+    if (ghost) continue;
+    b.box(hip, o.thigh, [legT, thigh, legT], [0, -thigh / 2, 0]);
     b.box(knee, o.shin, [legT * 0.92, shin, legT * 0.92], [0, -shin / 2, 0]);
     b.box(knee, 'leather', [legT * 1.05, footH, legT * 1.7], [0, -shin - footH / 2, legT * 0.3]); // foot
+  }
+
+  // the wisp narrows to a point well short of the ground, leaving a gap over the shadow
+  link(hips, joints.tail, [0, -0.04, 0]);
+  if (ghost) {
+    const length = 0.8 * hipHeight;
+    const upper = 0.45 * length;
+    const lower = length - upper;
+    const r = hipW * 0.5;
+    b.taper(joints.tail, o.pelvis, r, r * 0.8, upper, [0, -upper / 2, 0]);
+    link(joints.tail, joints.tailTip, [0, -upper, 0]);
+    b.taper(joints.tailTip, o.pelvis, r * 0.8, 0.03, lower, [0, -lower / 2, 0]);
+  } else {
+    link(joints.tail, joints.tailTip, [0, 0, 0]);
+  }
+
+  let shadow: Mesh | null = null;
+  if (p.shadow) {
+    // on the root, so it neither turns nor rises with the body
+    shadow = b.mesh(root, new CylinderGeometry(0.3 * p.bulk, 0.3 * p.bulk, 0.01, 12), 'dark', [0, 0.005, 0]);
+    shadow.name = 'shadow';
   }
 
   const fx = new Group();
@@ -158,7 +187,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     b.box(fx, p.magic, [0.07, 0.07, 0.07], [Math.cos(a) * 0.27, Math.sin(a) * 0.27, 0], [45, 45, 0]);
   }
 
-  return { root, body, joints, hipHeight, fx };
+  return { root, body, joints, hipHeight, fx, shadow };
 }
 
 export function applyPose(unit: Humanoid, pose: Pose): void {
@@ -174,12 +203,17 @@ export function applyPose(unit: Humanoid, pose: Pose): void {
   unit.joints.hips.position.x += x;
   unit.joints.hips.position.y += y;
   unit.joints.hips.position.z += z;
+  if (unit.shadow) {
+    const s = Math.min(1, Math.max(0.45, 1 - 1.5 * y));
+    unit.shadow.scale.set(s, 1, s);
+  }
 
   const scale = pose.fx?.scale ?? 0;
   unit.fx.visible = scale > 0.01;
   if (pose.fx) {
     unit.fx.position.set(...pose.fx.pos);
     unit.fx.scale.setScalar(Math.max(scale, 0.01));
+    unit.fx.rotation.z = (pose.fx.spin ?? 0) * DEG;
   }
 }
 

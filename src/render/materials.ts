@@ -7,6 +7,7 @@ import { rampIndex, rampRgb, type RampName, type RGB } from './palette';
  * - LIGHT:   light intensity in the red channel, used to pick the shade per sprite pixel;
  * - ID:      ramp id in the red channel, used to pick the ramp per sprite pixel.
  * Lighting is in view space, so every sprite direction is lit the same way.
+ * The preview also dithers by uOpacity, like the sprites; the sprite passes leave that to postprocessing.
  */
 export const ShadeMode = { Preview: 0, Light: 1, Id: 2 } as const;
 export type ShadeMode = (typeof ShadeMode)[keyof typeof ShadeMode];
@@ -79,8 +80,15 @@ const fragmentShader = /* glsl */ `
   uniform float uFill;
   uniform float uMinLight;
   uniform vec3 uThresholds;
+  uniform float uOpacity;
   varying vec3 vNormal;
+  // 4x4 ordered dither threshold in [0, 1)
+  float bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+  float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
   void main() {
+    // glowing ramps fade half as fast, as in the sprites
+    float opacity = uMinLight > 0.0 ? 2.0 * uOpacity : uOpacity;
+    if (uMode < 0.5 && bayer4(gl_FragCoord.xy / 2.0) >= opacity) discard;
     vec3 n = normalize(vNormal);
     if (!gl_FrontFacing) n = -n;
     float light = clamp(uAmbient + uDiffuse * max(dot(n, uLightDir), 0.0) + uFill * max(n.z, 0.0), uMinLight, 1.0);
@@ -107,6 +115,7 @@ export class MaterialLibrary {
     uDiffuse: { value: DEFAULT_LIGHTING.diffuse },
     uFill: { value: DEFAULT_LIGHTING.fill },
     uThresholds: { value: new Vector3(...DEFAULT_LIGHTING.thresholds) },
+    uOpacity: { value: 1 },
   };
   private readonly cache = new Map<RampName, ShaderMaterial>();
   private readonly overrides = new Map<RampName, RGB[]>();
@@ -135,6 +144,11 @@ export class MaterialLibrary {
     this.overrides.set(ramp, colors);
     const mat = this.cache.get(ramp);
     if (mat) mat.uniforms.uRamp.value = toVectors(colors);
+  }
+
+  /** See-through preview, dithered like the sprites. */
+  setOpacity(opacity: number): void {
+    this.shared.uOpacity.value = opacity;
   }
 
   setMode(mode: ShadeMode): void {

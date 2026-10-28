@@ -1,6 +1,7 @@
 import { Color, type Object3D, OrthographicCamera, Scene, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { DEFAULT_LIGHTING, ID_STEP, ShadeMode, type MaterialLibrary } from './materials';
-import { downscaleFrame, type IndexedFrame, type PostprocessSettings } from './postprocess';
+import { MAGIC_RAMPS, rampIndex } from './palette';
+import { dither, downscaleFrame, type IndexedFrame, type PostprocessSettings } from './postprocess';
 
 /** Rendered directions; the west-facing ones are mirrored from their east twins. */
 export const DIRECTIONS = ['N', 'NE', 'E', 'SE', 'S'] as const;
@@ -36,6 +37,12 @@ export function anchorOf(s: Pick<SpriteSettings, 'frameSize' | 'anchorY'>): { x:
   return { x: s.frameSize / 2, y: Math.round(s.frameSize * s.anchorY) };
 }
 
+/** Largest supersampled render target, in pixels per side. */
+const MAX_TARGET_SIZE = 2048;
+
+/** Glowing ramps stay more solid when a sprite is dithered see-through. */
+const GLOW_RAMPS = MAGIC_RAMPS.map(rampIndex);
+
 export class SpriteRenderer {
   private readonly camera = new OrthographicCamera();
   private target: WebGLRenderTarget | null = null;
@@ -66,11 +73,23 @@ export class SpriteRenderer {
   }
 
   /**
-   * Renders `count` frames in every direction, so the render target is set up once per batch.
-   * `setFrame(i)` puts the subject in its i-th frame; `root` is turned to face each direction.
+   * Supersampling actually used: big frames get less, so the render target stays within what
+   * the GPU can render and re-rendering stays quick. 256 px frames still get 8x.
    */
-  renderFrames(root: Object3D, count: number, setFrame: (i: number) => void, s: SpriteSettings): Map<Direction, IndexedFrame[]> {
-    const size = s.frameSize * s.supersample;
+  supersampleFor(s: Pick<SpriteSettings, 'frameSize' | 'supersample'>): number {
+    const gl = this.renderer.getContext();
+    const max = Math.min(MAX_TARGET_SIZE, this.renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number);
+    return Math.max(1, Math.min(s.supersample, Math.floor(max / s.frameSize)));
+  }
+
+  /**
+   * Renders `count` frames in every direction, so the render target is set up once per batch.
+   * `setFrame(i)` puts the subject in its i-th frame and may return its opacity (default 1);
+   * `root` is turned to face each direction.
+   */
+  renderFrames(root: Object3D, count: number, setFrame: (i: number) => number | void, s: SpriteSettings): Map<Direction, IndexedFrame[]> {
+    const ss = this.supersampleFor(s);
+    const size = s.frameSize * ss;
     this.prepare(size);
     this.configureCamera(this.camera, s);
 
@@ -92,10 +111,12 @@ export class SpriteRenderer {
         root.rotation.y = (DIRECTION_YAW[dir] * Math.PI) / 180;
         const frames: IndexedFrame[] = [];
         for (let i = 0; i < count; i++) {
-          setFrame(i);
+          const opacity = setFrame(i) ?? 1;
           this.pass(ShadeMode.Id, this.idBuf, size);
           this.pass(ShadeMode.Light, this.lightBuf, size);
-          frames.push(downscaleFrame(this.idBuf, this.lightBuf, s.frameSize, s.frameSize, s.supersample, ID_STEP, s));
+          const frame = downscaleFrame(this.idBuf, this.lightBuf, s.frameSize, s.frameSize, ss, ID_STEP, s);
+          // dithered after the outline, so the edge isn't drawn around every hole
+          frames.push(dither(frame, opacity, i, GLOW_RAMPS));
         }
         result.set(dir, frames);
       }

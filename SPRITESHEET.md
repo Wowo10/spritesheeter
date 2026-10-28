@@ -68,7 +68,7 @@ Example from a default humanoid (32 px frames, default frame counts; the palette
   "frameWidth": 32,
   "frameHeight": 32,
   "columns": 5,
-  "rows": 24,
+  "rows": 28,
   "directions": ["N", "NE", "E", "SE", "S"],
   "mirrored": { "NW": "NE", "W": "E", "SW": "SE" },
   "anchor": { "x": 16, "y": 25 },
@@ -77,7 +77,8 @@ Example from a default humanoid (32 px frames, default frame counts; the palette
     "walk":   { "row": 4,  "frames": 5, "fps": 8, "loop": true  },
     "attack": { "row": 9,  "frames": 5, "fps": 8, "loop": false },
     "cast":   { "row": 14, "frames": 6, "fps": 8, "loop": false },
-    "death":  { "row": 20, "frames": 4, "fps": 6, "loop": false }
+    "death":   { "row": 20, "frames": 4, "fps": 6, "loop": false },
+    "channel": { "row": 24, "frames": 4, "fps": 6, "loop": true  }
   },
   "palette": [[0, 0, 0], [58, 10, 10], "..."],
   "team": {
@@ -119,9 +120,13 @@ if loop: frameIndex = frameIndex mod frames
 else:    frameIndex = min(frameIndex, frames - 1)   // hold the last frame
 ```
 
-One-shot animations (`attack`, `cast`, `death`) are rendered so the last frame is the end pose. For `death`, hold that frame as the corpse. For `attack` and `cast`, switch back to `idle` or `walk` once the last frame has played, and trigger the hit or spell on a frame of your choice (often around 60% of the way through).
+One-shot animations (`attack`, `cast`, `death`) are rendered so the last frame is the end pose. For `death`, hold that frame as the corpse. A ghost's last death frame is empty, because it fades away and leaves no corpse. For `attack` and `cast`, switch back to `idle` or `walk` once the last frame has played, and trigger the hit or spell on a frame of your choice (often around 60% of the way through).
 
-Looping animations (`idle`, `walk`) are rendered without a duplicate end frame, so they wrap straight from the last frame back to frame 0.
+Looping animations (`idle`, `walk`, `channel`) are rendered without a duplicate end frame, so they wrap straight from the last frame back to frame 0.
+
+`channel` is a sustained spell: the unit holds both hands out with a pulsing spell in front of them. Play it for as long as the unit is channelling, such as for a beam, a heal over time or a summon, then switch back to `idle`. A game will usually draw the beam or other target effect itself, starting from the spell's position.
+
+New animations are added after the existing ones (`channel` comes after `death`), so the rows of animations that were already in a sheet don't move when you re-export.
 
 ### Picking a direction from movement
 

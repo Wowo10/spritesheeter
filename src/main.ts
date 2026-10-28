@@ -6,10 +6,12 @@ import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
 import { downloadJson, downloadPng, sheetToCanvas } from './export/download';
 import { packSheet, type AnimationFrames, type Sheet } from './export/packer';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
-import { CLOTH_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
+import { CLOTH_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
+import type { Outline } from './render/postprocess';
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings } from './render/spriteRenderer';
+import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
 import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
-import { ARMORS, CAPES, HAIR_STYLES, HAND_ITEMS, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
+import { ARMORS, BODIES, CAPES, GAITS, HAIR_STYLES, HAND_ITEMS, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
 import { Preview3D } from './ui/preview3d';
 import { CompassPreview } from './ui/spritePreview';
 import { initSplitter } from './ui/splitter';
@@ -20,13 +22,19 @@ const HOLD_FRAMES = 4;
 
 const NO_CLIP = '(none)';
 
+// the big sizes are for buildings and other large models
+const FRAME_SIZES = [32, 48, 64, 96, 128, 160, 192, 256];
+const OUTLINES: Outline[] = ['none', 'inner', 'outer'];
+const SUPERSAMPLES = [4, 8, 12];
+
 /** A sheet row: how many frames, and how to put the subject at normalised time t. */
 interface Playable {
   name: string;
   frames: number;
   fps: number;
   loop: boolean;
-  apply: (t: number) => void;
+  /** Returns the frame's opacity, if not 1. */
+  apply: (t: number) => number | void;
 }
 
 const state = {
@@ -52,6 +60,66 @@ const state = {
     rows: Object.fromEntries(ANIMATION_NAMES.map((n) => [n, NO_CLIP])) as Record<AnimationName, string>,
   },
 };
+
+// --- share links ------------------------------------------------------------
+
+/** Values a shared link may set for fields that take one of a set; see mergeSettings. */
+const SHARE_CHOICES: Record<string, readonly unknown[]> = {
+  preset: [...Object.keys(PRESETS), 'random'],
+  previewAnim: ANIMATION_NAMES,
+  team: TEAM_COLOR_NAMES,
+  'unit.helmet': HELMETS,
+  'unit.armor': ARMORS,
+  'unit.rightHand': HAND_ITEMS,
+  'unit.leftHand': HAND_ITEMS,
+  'unit.hairStyle': HAIR_STYLES,
+  'unit.cape': CAPES,
+  'unit.gait': GAITS,
+  'unit.body': BODIES,
+  ...Object.fromEntries(['skin', 'cloth', 'metal', 'hair', 'magic', 'capeColor'].map((k) => [`unit.${k}`, RAMP_NAMES])),
+  'sprite.frameSize': FRAME_SIZES,
+  'sprite.outline': OUTLINES,
+  'sprite.supersample': SUPERSAMPLES,
+};
+
+/**
+ * Everything a share link carries: the procedural unit and how it's rendered. A custom model
+ * stays behind, since its file can't travel in a URL. The objects are state's own.
+ */
+function sharedSettings() {
+  const { preset, unit, frames, sprite, lighting, previewAnim, team } = state;
+  return { preset, unit, frames, sprite, lighting, previewAnim, team };
+}
+
+/** Applies the settings of a share link the page was opened from, before the GUI is built. */
+function loadSharedSettings(): void {
+  const text = new URLSearchParams(location.search).get(SHARE_PARAM);
+  if (!text) return;
+  try {
+    const shared = sharedSettings();
+    mergeSettings(shared, decodeSettings(text), SHARE_CHOICES);
+    Object.assign(state, shared);
+  } catch (e) {
+    alert(`Couldn't read the shared settings in this link: ${(e as Error).message}`);
+  }
+}
+loadSharedSettings();
+
+/** Puts the current settings in the address bar and copies the link. */
+async function copyShareLink(): Promise<void> {
+  const url = new URL(location.href);
+  url.hash = '';
+  url.searchParams.set(SHARE_PARAM, encodeSettings({ v: 1, ...sharedSettings() }));
+  history.replaceState(null, '', url);
+  try {
+    await navigator.clipboard.writeText(url.href);
+    shareController.name('✓ link copied');
+    setTimeout(() => shareController.name(SHARE_LABEL), 1500);
+  } catch {
+    // no clipboard outside secure contexts (e.g. the dev server opened by LAN address)
+    prompt('Copy this link to share these settings:', url.href);
+  }
+}
 
 const view = new Preview3D(document.getElementById('view3d')!);
 const mats = new MaterialLibrary();
@@ -94,7 +162,14 @@ function sheetRows(): Playable[] {
     return rows.length > 0 ? rows : [{ name: 'idle', frames: 1, fps: 1, loop: true, apply: () => m.sample(null, 0, true) }];
   }
   const u = unit!;
-  return defs.map((d) => ({ ...d, apply: (t: number) => applyPose(u, d.pose(t, state.unit, u.hipHeight)) }));
+  return defs.map((d) => ({
+    ...d,
+    apply: (t: number) => {
+      const pose = d.pose(t, state.unit, u.hipHeight);
+      applyPose(u, pose);
+      return pose.opacity;
+    },
+  }));
 }
 
 function regenerate(): void {
@@ -112,8 +187,10 @@ function regenerate(): void {
     frames: sprites.renderFrames(root, a.frames, (i) => a.apply(frameTime(a, i)), state.sprite),
   }));
   sheet = packSheet(rendered, anchorOf(state.sprite));
+  const ss = sprites.supersampleFor(state.sprite);
   document.getElementById('sheetInfo')!.textContent =
-    `${sheet.width}×${sheet.height} · ${sheet.meta.columns}×${sheet.meta.rows} frames of ${state.sprite.frameSize}px`;
+    `${sheet.width}×${sheet.height} · ${sheet.meta.columns}×${sheet.meta.rows} frames of ${state.sprite.frameSize}px` +
+    (ss < state.sprite.supersample ? ` · supersample ${ss} (max for this frame size)` : '');
   applyTeam();
 }
 
@@ -130,7 +207,8 @@ function fitPreviews(): void {
   // the side panel's and each preview panel's horizontal padding
   const avail = side.clientWidth - 2 * 12 - 2 * 10;
   compass.fitWidth(avail);
-  if (sheet) sheetCanvas.style.width = `${sheet.width * Math.max(1, Math.floor(avail / sheet.width))}px`;
+  // sheets wider than the panel (big frames) are shown scaled down
+  if (sheet) sheetCanvas.style.width = `${sheet.width > avail ? avail : sheet.width * Math.floor(avail / sheet.width)}px`;
 }
 
 function showPreviewAnim(): void {
@@ -253,16 +331,23 @@ function rebindUnit(): void {
   ];
   const hands = [hand('rightHand', 'right hand'), hand('leftHand', 'left hand')];
   const colors = [
-    unitFolder.add(u, 'skin', SKIN_RAMPS),
-    unitFolder.add(u, 'cloth', CLOTH_RAMPS),
+    unitFolder.add(u, 'skin', [...SKIN_RAMPS, ...UNDEAD_SKIN_RAMPS]),
+    unitFolder.add(u, 'cloth', [...CLOTH_RAMPS, 'ghost']),
     unitFolder.add(u, 'metal', METAL_RAMPS),
     unitFolder.add(u, 'hair', RAMP_NAMES).name('hair color'),
     unitFolder.add(u, 'magic', MAGIC_RAMPS).name('magic color'),
     unitFolder.add(u, 'cape', CAPES),
     unitFolder.add(u, 'capeColor', CLOTH_RAMPS).name('cape color'),
   ];
-  [...plain, ...colors].forEach((c) => c.onChange(rebuild));
-  unitControllers = [seed, ...plain, ...hands, ...colors];
+  const spooky = [
+    unitFolder.add(u, 'gait', GAITS),
+    unitFolder.add(u, 'body', BODIES),
+    unitFolder.add(u, 'opacity', 0.25, 1, 0.25),
+    unitFolder.add(u, 'glowEyes').name('glowing eyes'),
+    unitFolder.add(u, 'shadow').name('ground shadow'),
+  ];
+  [...plain, ...colors, ...spooky].forEach((c) => c.onChange(rebuild));
+  unitControllers = [seed, ...plain, ...hands, ...colors, ...spooky];
   refreshGui();
 }
 rebindUnit();
@@ -388,13 +473,13 @@ for (const name of ANIMATION_NAMES) {
 }
 
 const spriteFolder = gui.addFolder('Sprite');
-spriteFolder.add(state.sprite, 'frameSize', [32, 48, 64, 96]).onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'pixelsPerUnit', 6, 40, 0.5).name('pixels / unit').onChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'frameSize', FRAME_SIZES).onChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'pixelsPerUnit', 6, 80, 0.5).name('pixels / unit').onChange(queueRegenerate);
 spriteFolder.add(state.sprite, 'elevation', 10, 70, 1).onChange(queueRegenerate);
 spriteFolder.add(state.sprite, 'anchorY', 0.5, 0.95, 0.01).name('ground anchor').onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'outline', ['none', 'inner', 'outer']).onChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'outline', OUTLINES).onChange(queueRegenerate);
 spriteFolder.add(state.sprite, 'coverage', 0.1, 0.9, 0.05).name('min coverage').onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'supersample', [4, 8, 12]).onChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'supersample', SUPERSAMPLES).onChange(queueRegenerate);
 
 const lightFolder = gui.addFolder('Lighting');
 lightFolder.add(state.lighting, 'azimuth', -180, 180, 1).name('light from ← →').onChange(queueRegenerate);
@@ -412,6 +497,8 @@ viewFolder.add(view, 'spriteView').name('sprite camera');
 gui.add(state, 'team', TEAM_COLOR_NAMES).name('team color').onChange(applyTeam);
 gui.add(actions, 'export').name('💾 export PNG + JSON');
 gui.add(actions, 'exportAllTeams').name('💾 export all team colors');
+const SHARE_LABEL = '🔗 copy share link';
+const shareController = gui.add({ share: copyShareLink }, 'share').name(SHARE_LABEL);
 
 // --- main loop --------------------------------------------------------------
 
@@ -432,7 +519,7 @@ function tick(now: number): void {
       t = last > 0 ? p / last : 0;
       frame = Math.floor(p);
     }
-    anim.apply(t);
+    mats.setOpacity(anim.apply(t) ?? 1);
     compass.draw(frame);
   }
   view.render();

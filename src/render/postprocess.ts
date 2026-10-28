@@ -116,6 +116,29 @@ export function outline(f: IndexedFrame, mode: Exclude<Outline, 'none'>): Indexe
   return { ...f, data };
 }
 
+/** 4x4 Bayer matrix: below 16 * opacity a pixel is kept; at 0.5 that's a checkerboard. */
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+/**
+ * Fakes translucency with an ordered dither, dropping pixels until about `opacity` of them are
+ * left. `phase` shifts the pattern sideways, so consecutive frames shimmer. Pixels in the
+ * `glow` ramps fade half as fast: a 50% ghost keeps solid eyes, and they go last when it fades.
+ */
+export function dither(f: IndexedFrame, opacity: number, phase: number, glow: readonly number[] = []): IndexedFrame {
+  if (opacity >= 1) return f;
+  const data = new Uint8Array(f.data);
+  for (let y = 0; y < f.height; y++) {
+    for (let x = 0; x < f.width; x++) {
+      const i = y * f.width + x;
+      const v = f.data[i];
+      if (v === 0) continue;
+      const a = glow.includes(Math.floor((v - 1) / SHADES)) ? 2 * opacity : opacity;
+      if (BAYER4[(y % 4) * 4 + ((x + phase) % 4)] + 0.5 >= 16 * a) data[i] = 0;
+    }
+  }
+  return { ...f, data };
+}
+
 export function mirrorFrame(f: IndexedFrame): IndexedFrame {
   const data = new Uint8Array(f.data.length);
   for (let y = 0; y < f.height; y++) {

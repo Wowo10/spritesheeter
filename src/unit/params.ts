@@ -5,6 +5,10 @@ export const HELMETS = ['none', 'cap', 'full', 'horned', 'hood'] as const;
 export const ARMORS = ['none', 'leather', 'chain', 'plate'] as const;
 export const CAPES = ['none', 'long', 'broad'] as const;
 export const HAIR_STYLES = ['short', 'long', 'afro', 'mohawk', 'bald'] as const;
+/** walk; float: hovers above the ground, legs dangling; shamble: lurches along dragging the right leg. */
+export const GAITS = ['walk', 'float', 'shamble'] as const;
+/** ghost: no legs, the body trails off into a wisp below the hips. */
+export const BODIES = ['normal', 'ghost'] as const;
 
 export const HAND_ITEMS = [
   'none',
@@ -37,6 +41,8 @@ export type Armor = (typeof ARMORS)[number];
 export type HandItem = (typeof HAND_ITEMS)[number];
 export type Cape = (typeof CAPES)[number];
 export type HairStyle = (typeof HAIR_STYLES)[number];
+export type Gait = (typeof GAITS)[number];
+export type Body = (typeof BODIES)[number];
 export type ShieldItem = 'roundShield' | 'kiteShield';
 export type WeaponItem = Exclude<HandItem, 'none' | 'bow' | 'orb' | ShieldItem>;
 export type Hand = 'L' | 'R';
@@ -67,7 +73,18 @@ export interface UnitParams {
   magic: RampName;
   cape: Cape;
   capeColor: RampName;
+  gait: Gait;
+  body: Body;
+  /** Below 1 the sprite is see-through, drawn as an ordered dither (0.5 drops every other pixel). */
+  opacity: number;
+  /** Eyes in the magic colour, lit whichever way the head faces. */
+  glowEyes: boolean;
+  /** Dark blob on the ground under the unit; shrinks as the unit rises off the ground. */
+  shadow: boolean;
 }
+
+/** How high a floating unit's hips hover above where they'd be standing. */
+export const HOVER = 0.16;
 
 /** How an item is held and swung; drives both the model and the animations. */
 export type ItemKind = 'none' | 'chop' | 'thrust' | 'shield' | 'bow' | 'orb';
@@ -178,6 +195,11 @@ const BASE: UnitParams = {
   magic: 'arcane',
   cape: 'none',
   capeColor: 'team',
+  gait: 'walk',
+  body: 'normal',
+  opacity: 1,
+  glowEyes: false,
+  shadow: false,
 };
 
 export const PRESETS: Record<string, UnitParams> = {
@@ -265,6 +287,38 @@ export const PRESETS: Record<string, UnitParams> = {
     magic: 'venom',
   },
   guard: { ...BASE, height: 1.05, helmet: 'cap', armor: 'chain', rightHand: 'halberd', leftHand: 'none' },
+  ghost: {
+    ...BASE,
+    bulk: 0.9,
+    armLength: 1.1,
+    armThickness: 0.85,
+    helmet: 'hood',
+    armor: 'none',
+    rightHand: 'none',
+    leftHand: 'none',
+    skin: 'ghost',
+    cloth: 'ghost',
+    magic: 'venom',
+    cape: 'long',
+    gait: 'float',
+    body: 'ghost',
+    opacity: 0.5,
+    glowEyes: true,
+    shadow: true,
+  },
+  zombie: {
+    ...BASE,
+    bulk: 0.95,
+    headSize: 1.08,
+    armLength: 1.1,
+    helmet: 'none',
+    hairStyle: 'bald',
+    armor: 'none',
+    rightHand: 'none',
+    leftHand: 'none',
+    skin: 'rotSkin',
+    gait: 'shamble',
+  },
   brute: { ...BASE, bulk: 1.4, headSize: 1.15, shoulderWidth: 1.15, armLength: 1.12, armThickness: 1.2, legLength: 0.9, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'club', leftHand: 'none', skin: 'greenSkin' },
 };
 
@@ -297,6 +351,11 @@ export function randomUnit(seed: number): UnitParams {
     armThickness: round2(range(rng, 0.9, 1.15)),
     legLength: round2(range(rng, 0.92, 1.08)),
     hairStyle: pick(rng, HAIR_STYLES),
+    gait: 'walk',
+    body: 'normal',
+    opacity: 1,
+    glowEyes: false,
+    shadow: false,
   };
 }
 

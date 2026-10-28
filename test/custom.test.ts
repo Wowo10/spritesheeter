@@ -131,7 +131,14 @@ describe('guessing', () => {
       attack: 'Sword Slash',
       cast: null,
       death: 'Dying',
+      channel: null,
     });
+  });
+
+  it('keeps channelled spells off the cast row', () => {
+    const rows = guessRows(['Spell Cast', 'Channel Spell']);
+    expect(rows.cast).toBe('Spell Cast');
+    expect(rows.channel).toBe('Channel Spell');
   });
 
   it('puts an unrecognised clip on the idle row rather than none', () => {

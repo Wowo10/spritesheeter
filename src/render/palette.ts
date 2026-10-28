@@ -28,6 +28,8 @@ export const RAMPS = {
   arcane: ['#1a3a9a', '#2e7ae8', '#6ac8ff', '#e0f8ff'],
   holy: ['#a07810', '#e0b830', '#fce878', '#fffce8'],
   venom: ['#1a6a10', '#3aa82a', '#7ee050', '#e8ffc0'],
+  rotSkin: ['#262c1c', '#4a5434', '#76805a', '#a4ac84'],
+  ghost: ['#34425e', '#6280a4', '#a4c2de', '#e6f6ff'],
 } as const satisfies Record<string, readonly [string, string, string, string]>;
 
 export type RampName = keyof typeof RAMPS;
@@ -35,6 +37,8 @@ export type RampName = keyof typeof RAMPS;
 export const RAMP_NAMES = Object.keys(RAMPS) as RampName[];
 
 export const SKIN_RAMPS: RampName[] = ['skin', 'greenSkin', 'paleSkin'];
+/** Skins for the undead; kept apart so random units stay among the living. */
+export const UNDEAD_SKIN_RAMPS: RampName[] = ['rotSkin', 'ghost'];
 export const CLOTH_RAMPS: RampName[] = ['team', 'red', 'blue', 'green', 'purple', 'yellow'];
 export const METAL_RAMPS: RampName[] = ['steel', 'gold', 'bronze'];
 /** Glowing ramps for spell effects. */

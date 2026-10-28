@@ -305,8 +305,10 @@ const ROW_PATTERNS: Record<AnimationName, RegExp[]> = {
   idle: [/idle/i, /stand|breath/i],
   walk: [/walk/i, /jog|run/i, /move|locomot/i],
   attack: [/attack|slash|swing|strike|stab|chop/i, /punch|kick|shoot|hit(?!.*react)/i],
-  cast: [/cast|spell|magic/i],
+  // a channelled spell belongs on its own row, not the cast one
+  cast: [/^(?!.*channel).*(cast|spell|magic)/i],
   death: [/death|dying|\bdie\b|dead/i],
+  channel: [/channel/i, /beam|conjur/i],
 };
 
 /** Picks a clip for each sheet row by name; rows with no likely clip get null. */

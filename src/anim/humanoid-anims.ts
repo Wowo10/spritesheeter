@@ -1,4 +1,4 @@
-import { bodyDims, handItems, itemKind, otherHand, type Hand, type ItemKind, type UnitParams } from '../unit/params';
+import { bodyDims, handItems, HOVER, itemKind, otherHand, type Gait, type Hand, type ItemKind, type UnitParams } from '../unit/params';
 import type { AnimationDef, JointName, JointRot, Pose } from './types';
 
 type Joints = Partial<Record<JointName, JointRot>>;
@@ -51,6 +51,17 @@ const ARM_REST: Record<ItemKind, Arm> = {
   orb: { shoulder: [18, 0, 12], elbow: [72, 0, 0], hand: [0, 0, 0] },
 };
 
+/** Empty hands per gait: ghosts reach out with limp wrists, zombies hold their arms out straight. */
+const EMPTY_ARM: Record<Gait, Arm> = {
+  walk: ARM_REST.none,
+  float: { shoulder: [55, 0, 8], elbow: [30, 0, 0], hand: [-20, 0, 0] },
+  shamble: { shoulder: [75, 0, 4], elbow: [10, 0, 0], hand: [-25, 0, 0] },
+};
+
+function restArm(unit: UnitParams, kind: ItemKind): Arm {
+  return kind === 'none' ? EMPTY_ARM[unit.gait] : ARM_REST[kind];
+}
+
 /** Total arm pitch at which the hand holds each kind upright while casting (orbs float above the palm). */
 const CAST_WRIST: Partial<Record<ItemKind, number>> = { chop: 180, thrust: 180, orb: 90 };
 
@@ -68,7 +79,7 @@ function kinds(unit: UnitParams): Record<Hand, ItemKind> {
 function armStance(unit: UnitParams): Joints {
   const k = kinds(unit);
   const j: Joints = {};
-  for (const h of HANDS) setArm(j, h, ARM_REST[k[h]]);
+  for (const h of HANDS) setArm(j, h, restArm(unit, k[h]));
   return j;
 }
 
@@ -149,6 +160,114 @@ function walk(t: number, unit: UnitParams): Pose {
   };
 }
 
+// --- floating and shambling ----------------------------------------------------
+
+/** Legs hanging loose under a floating unit: trailing `trail` degrees back, swaying with s in [-1, 1]. */
+function dangle(s: number, trail = 8): Joints {
+  return {
+    hipL: [-trail + 6 * s, 0, 4],
+    hipR: [-trail - 6 - 6 * s, 0, 4],
+    kneeL: [-30 - 6 * s, 0, 0],
+    kneeR: [-22 + 6 * s, 0, 0],
+  };
+}
+
+/** Bobs in the air, drifting side to side; empty hands sway in turn. */
+function floatIdle(t: number, unit: UnitParams): Pose {
+  const phase = t * Math.PI * 2;
+  const bob = Math.cos(phase);
+  const sway = Math.sin(phase);
+  const joints: Joints = {
+    ...armStance(unit),
+    ...dangle(sway),
+    spine: [-4, 0, 3 * sway],
+    head: [-3 * bob, 8 * sway, 0],
+  };
+  for (const h of HANDS) nudge(joints, `shoulder${h}`, [sgn(h) * 6 * sway + 4 * bob, 0, 0]);
+  return { joints, hips: [0.02 * sway, HOVER + 0.05 * bob, 0] };
+}
+
+/** Glides leaning forward, legs or wisp trailing, rising and sinking once per cycle. */
+function floatWalk(t: number, unit: UnitParams): Pose {
+  const phase = t * Math.PI * 2;
+  const s = Math.sin(phase);
+  const c = Math.cos(phase);
+  const joints: Joints = {
+    ...armStance(unit),
+    ...dangle(s, 25),
+    spine: [-14, 5 * s, 0],
+    head: [8, -4 * s, 0],
+  };
+  for (const h of HANDS) nudge(joints, `shoulder${h}`, [sgn(h) * 8 * s, 0, 0]);
+  return { joints, hips: [0, HOVER + 0.06 * c, 0] };
+}
+
+/** Hunched and swaying, head lolling to one side. */
+function shambleIdle(t: number, unit: UnitParams): Pose {
+  const phase = t * Math.PI * 2;
+  const bob = Math.cos(phase);
+  const sway = Math.sin(phase);
+  const joints: Joints = {
+    ...armStance(unit),
+    hipL: [6, 0, 6],
+    hipR: [-6, 0, 10],
+    kneeL: [-16, 0, 0],
+    kneeR: [-4, 0, 0],
+    spine: [-14 + 3 * bob, 4 * sway, -6 + 3 * sway],
+    head: [-10, 8 * sway, 18 + 8 * bob],
+  };
+  for (const h of HANDS) nudge(joints, `shoulder${h}`, [sgn(h) * 5 * sway, 0, 0]);
+  return { joints, hips: [0.03 * sway, -0.05 + 0.015 * bob, 0] };
+}
+
+/**
+ * The left leg takes real steps; the right drags behind, stiff-kneed, and swings out to the
+ * side to come forward. The body lurches over whichever leg carries it.
+ */
+function shambleWalk(t: number, unit: UnitParams): Pose {
+  const phase = t * Math.PI * 2;
+  const s = Math.sin(phase);
+  const c = Math.cos(phase);
+  const joints: Joints = {
+    ...armStance(unit),
+    hipL: [30 * s, 0, 4],
+    kneeL: [-8 - 45 * Math.max(0, c), 0, 0],
+    hipR: [-8 - 14 * s, 0, 6 + 8 * Math.max(0, -s)],
+    kneeR: [-3, 0, 0],
+    spine: [-16, 10 * s, -8 * s],
+    head: [-8, -6 * s, 15 + 12 * c],
+  };
+  for (const h of HANDS) nudge(joints, `shoulder${h}`, [sgn(h) * 10 * s, 0, 0]);
+  // sags onto the dragged leg
+  return { joints, hips: [0.04 * s, -0.03 - 0.06 * Math.max(0, -s), 0] };
+}
+
+const IDLE: Record<Gait, AnimationDef['pose']> = { walk: idle, float: floatIdle, shamble: shambleIdle };
+const WALK: Record<Gait, AnimationDef['pose']> = { walk, float: floatWalk, shamble: shambleWalk };
+
+/**
+ * Gait on top of the stationary animations: floaters attack and cast in mid-air with their
+ * legs dangling; shamblers do it hunched over, and lunge with the head to bite.
+ */
+function withGait(name: 'attack' | 'cast' | 'channel', pose: AnimationDef['pose']): AnimationDef['pose'] {
+  return (t, unit, hipHeight) => {
+    const p = pose(t, unit, hipHeight);
+    if (unit.gait === 'float') {
+      const [x, y, z] = p.hips ?? [0, 0, 0];
+      const fx = p.fx && { ...p.fx, pos: [p.fx.pos[0], p.fx.pos[1] + HOVER, p.fx.pos[2]] as [number, number, number] };
+      return { ...p, joints: { ...p.joints, ...dangle(0) }, hips: [x, y + HOVER, z], fx };
+    }
+    if (unit.gait === 'shamble') {
+      const joints = { ...p.joints };
+      const bite = name === 'attack' ? keys(t, [[0, 0], [0.5, 10], [0.75, -25], [1, 0]]) : 0;
+      nudge(joints, 'spine', [-10, 0, 0]);
+      nudge(joints, 'head', [-6 + bite, 0, 15]);
+      return { ...p, joints };
+    }
+    return p;
+  };
+}
+
 // --- attacks: arm motions per item, body motions per leading item ------------
 
 /** Overhead chop: wind up behind the head, strike forward-down. */
@@ -224,10 +343,10 @@ function bashArm(t: number, rest: Arm): Arm {
   };
 }
 
-function attackArm(kind: ItemKind, t: number): Arm {
+function attackArm(kind: ItemKind, t: number, rest: Arm): Arm {
   if (kind === 'chop') return chopArm(t);
   if (kind === 'thrust') return thrustArm(t);
-  return bashArm(t, ARM_REST[kind]);
+  return bashArm(t, rest);
 }
 
 interface BodyMotion {
@@ -343,16 +462,16 @@ function attack(t: number, unit: UnitParams): Pose {
   if (bowHand) return attackBow(t, joints, bowHand);
 
   // weapons attack; failing that, orbs are thrust at the enemy, then shields bash;
-  // with empty hands, the right one punches
+  // with empty hands, the right one punches, or a shambler claws with both
   const armed = HANDS.filter((h) => k[h] === 'chop' || k[h] === 'thrust');
   const orbs = HANDS.filter((h) => k[h] === 'orb');
   const shields = HANDS.filter((h) => k[h] === 'shield');
-  const attackers: Hand[] = armed.length ? armed : orbs.length ? orbs : shields.length ? shields : ['R'];
+  const attackers: Hand[] = armed.length ? armed : orbs.length ? orbs : shields.length ? shields : unit.gait === 'shamble' ? HANDS : ['R'];
   const lead: Hand = attackers.includes('R') ? 'R' : attackers[0];
 
   for (const h of attackers) {
     const th = h === lead ? t : Math.max(0, (t - OFF_HAND_LAG) / (1 - OFF_HAND_LAG));
-    setArm(joints, h, attackArm(k[h], th));
+    setArm(joints, h, attackArm(k[h], th, restArm(unit, k[h])));
   }
   const body = attackBody(k[lead], t);
   const yaw = sgn(lead);
@@ -383,6 +502,46 @@ function dropGear(t: number, kind: ItemKind): JointRot {
 }
 
 function death(t: number, unit: UnitParams, hipHeight: number): Pose {
+  if (unit.body === 'ghost') return ghostDeath(t, unit);
+  const pose = fall(t, unit, hipHeight);
+  if (unit.gait !== 'float') return pose;
+  // drops out of the air
+  const [x, y, z] = pose.hips!;
+  return { ...pose, hips: [x, y + HOVER * keys(t, [[0, 1], [0.67, 0], [1, 0]]), z] };
+}
+
+/** Rises, arching back with the arms thrown up, and fades away. */
+function ghostDeath(t: number, unit: UnitParams): Pose {
+  const joints: Joints = { ...armStance(unit), ...dangle(0) };
+  for (const h of HANDS) {
+    joints[`shoulder${h}`] = rotKeys(t, [
+      [0, joints[`shoulder${h}`]!],
+      [0.5, [140, 0, 30]],
+      [1, [165, 0, 40]],
+    ]);
+    joints[`elbow${h}`] = rotKeys(t, [
+      [0, joints[`elbow${h}`]!],
+      [1, [5, 0, 0]],
+    ]);
+  }
+  joints.spine = rotKeys(t, [
+    [0, [-4, 0, 0]],
+    [0.5, [14, 0, 0]],
+    [1, [20, 0, 0]],
+  ]);
+  joints.head = rotKeys(t, [
+    [0, [0, 0, 0]],
+    [0.5, [25, 0, 0]],
+    [1, [30, 0, 0]],
+  ]);
+  return {
+    joints,
+    hips: [0, HOVER + keys(t, [[0, 0], [1, 0.45]]), 0],
+    opacity: keys(t, [[0, 1], [0.3, 0.9], [1, 0]]),
+  };
+}
+
+function fall(t: number, unit: UnitParams, hipHeight: number): Pose {
   const lying = 0.13 * unit.bulk - hipHeight;
   const stance = armStance(unit);
   const k = kinds(unit);
@@ -507,7 +666,7 @@ function cast(t: number, unit: UnitParams, hipHeight: number): Pose {
   ]);
   const k = kinds(unit);
   for (const h of HANDS) {
-    const arm = castArm(ARM_REST[k[h]]);
+    const arm = castArm(restArm(unit, k[h]));
     const rest = arm.hand;
     const target = CAST_WRIST[k[h]];
     const wrist = target === undefined ? rest[0] : target - arm.shoulder[0] - arm.elbow[0];
@@ -559,6 +718,47 @@ function cast(t: number, unit: UnitParams, hipHeight: number): Pose {
   };
 }
 
+/**
+ * Channelling, looped: legs braced, both hands held out in front, pouring energy into a spell
+ * that hangs just past the fingertips. The arms push and draw back with each pulse; the spell
+ * swells on the push and its sparks turn a quarter turn per loop, which their ring repeats.
+ */
+function channel(t: number, unit: UnitParams, hipHeight: number): Pose {
+  const phase = t * Math.PI * 2;
+  const push = Math.sin(phase);
+  const pulse = Math.cos(phase);
+  const dims = bodyDims(unit);
+  const sink = -0.05 + 0.01 * pulse;
+  const shoulderY = hipHeight + 0.06 + dims.torsoLen + sink;
+  const reach = dims.upperArm + dims.forearm;
+  const joints: Joints = {
+    hipL: [10, 0, 8],
+    hipR: [-8, 0, 8],
+    kneeL: [-12, 0, 0],
+    kneeR: [-8, 0, 0],
+    spine: [-6 + 2 * pulse, 0, 0],
+    head: [-4, 0, 0],
+  };
+  // roll < 0 brings the hands in toward the spell; the wrists hold items upright, as in cast
+  const k = kinds(unit);
+  for (const h of HANDS) {
+    const shoulder: JointRot = [80 + 5 * push, 0, -20];
+    const elbow: JointRot = [30 - 12 * push, 0, 0];
+    const target = CAST_WRIST[k[h]];
+    const wrist = target === undefined ? restArm(unit, k[h]).hand[0] : target - shoulder[0] - elbow[0];
+    setArm(joints, h, { shoulder, elbow, hand: [wrist, 0, 0] });
+  }
+  return {
+    joints,
+    hips: [0, sink, 0],
+    fx: {
+      pos: [0, shoulderY + 0.05 + 0.02 * push, 0.9 * reach + 0.12 + 0.04 * push],
+      scale: 1.1 + 0.2 * push,
+      spin: 90 * t,
+    },
+  };
+}
+
 // --- cape: secondary motion layered on top of every animation -----------------
 
 /** How far the cape and its lower half lift backward (degrees) at time t. */
@@ -580,6 +780,8 @@ const CAPE: Record<string, CapeMotion> = {
     keys(t, [[0, 5], [0.2, 12], [0.45, 34], [0.7, 22], [1, 5]]),
     keys(t, [[0, 3], [0.2, 8], [0.45, 26], [0.7, 32], [1, 4]]),
   ],
+  // held back by the spell's steady wind, rippling with each pulse
+  channel: (t) => [18 + 4 * Math.sin(t * Math.PI * 2), 14 + 5 * Math.cos(t * Math.PI * 2)],
   // streams up while falling, then lies flat under the body
   death: (t) => [
     keys(t, [[0, 8], [0.33, 25], [0.67, 45], [1, 0]]),
@@ -587,30 +789,79 @@ const CAPE: Record<string, CapeMotion> = {
   ],
 };
 
-function withCape(name: string, pose: AnimationDef['pose']): AnimationDef['pose'] {
-  const motion = CAPE[name];
+/** A ghost's wisp: [upper, tip] rotations. Its sideways roll lags a quarter cycle down the tip. */
+type TailMotion = (t: number) => [JointRot, JointRot];
+
+const TAIL: Record<string, TailMotion> = {
+  idle: (t) => {
+    const phase = t * Math.PI * 2;
+    return [
+      [-6 + 3 * Math.sin(phase), 0, 6 * Math.cos(phase)],
+      [-8 + 4 * Math.cos(phase), 0, 10 * Math.sin(phase)],
+    ];
+  },
+  walk: (t) => {
+    const phase = t * Math.PI * 2;
+    return [
+      [-28 - 5 * Math.sin(phase), 0, 8 * Math.cos(phase)],
+      [-18 - 8 * Math.cos(phase), 0, 12 * Math.sin(phase)],
+    ];
+  },
+  attack: (t) => [
+    [keys(t, [[0, -6], [0.5, -10], [0.75, -32], [1, -12]]), 0, 0],
+    [keys(t, [[0, -8], [0.5, -6], [0.75, -24], [1, -14]]), 0, 0],
+  ],
+  cast: (t) => [
+    [keys(t, [[0, -6], [0.45, -20], [0.7, -14], [1, -6]]), 0, 0],
+    [keys(t, [[0, -8], [0.45, -16], [0.7, -26], [1, -8]]), 0, 0],
+  ],
+  channel: (t) => {
+    const phase = t * Math.PI * 2;
+    return [
+      [-16 + 3 * Math.sin(phase), 0, 4 * Math.cos(phase)],
+      [-14 + 4 * Math.cos(phase), 0, 6 * Math.sin(phase)],
+    ];
+  },
+  // hangs straight while the body arches back, so it swings forward of it
+  death: (t) => [
+    [keys(t, [[0, -6], [1, 12]]), 0, 0],
+    [keys(t, [[0, -8], [1, 20]]), 0, 0],
+  ],
+};
+
+/** Cape and wisp motion, and the unit's opacity, layered over a pose. */
+function withSecondary(name: string, pose: AnimationDef['pose']): AnimationDef['pose'] {
+  const cape = CAPE[name];
+  const tail = TAIL[name];
   return (t, unit, hipHeight) => {
     const p = pose(t, unit, hipHeight);
-    const [flare, tip] = motion(t);
-    return { ...p, joints: { ...p.joints, cape: [-flare, 0, 0], capeTip: [-tip, 0, 0] } };
+    const [flare, tip] = cape(t);
+    const [tailUpper, tailTip] = tail(t);
+    return {
+      ...p,
+      joints: { ...p.joints, cape: [-flare, 0, 0], capeTip: [-tip, 0, 0], tail: tailUpper, tailTip },
+      opacity: unit.opacity * (p.opacity ?? 1),
+    };
   };
 }
 
-export const ANIMATION_NAMES = ['idle', 'walk', 'attack', 'cast', 'death'] as const;
+// new animations go last: rows of sheets games already use must not shift
+export const ANIMATION_NAMES = ['idle', 'walk', 'attack', 'cast', 'death', 'channel'] as const;
 export type AnimationName = (typeof ANIMATION_NAMES)[number];
 
 export type FrameCounts = Record<AnimationName, number>;
 
-export const DEFAULT_FRAME_COUNTS: FrameCounts = { idle: 4, walk: 5, attack: 5, cast: 6, death: 4 };
+export const DEFAULT_FRAME_COUNTS: FrameCounts = { idle: 4, walk: 5, attack: 5, cast: 6, death: 4, channel: 4 };
 
 /** The sheet's animations, top to bottom. */
 export function humanoidAnimations(counts: FrameCounts = DEFAULT_FRAME_COUNTS): AnimationDef[] {
   const all: AnimationDef[] = [
-    { name: 'idle', frames: counts.idle, fps: 4, loop: true, pose: idle },
-    { name: 'walk', frames: counts.walk, fps: 8, loop: true, pose: walk },
-    { name: 'attack', frames: counts.attack, fps: 8, loop: false, pose: attack },
-    { name: 'cast', frames: counts.cast, fps: 8, loop: false, pose: cast },
+    { name: 'idle', frames: counts.idle, fps: 4, loop: true, pose: (t, u, h) => IDLE[u.gait](t, u, h) },
+    { name: 'walk', frames: counts.walk, fps: 8, loop: true, pose: (t, u, h) => WALK[u.gait](t, u, h) },
+    { name: 'attack', frames: counts.attack, fps: 8, loop: false, pose: withGait('attack', attack) },
+    { name: 'cast', frames: counts.cast, fps: 8, loop: false, pose: withGait('cast', cast) },
     { name: 'death', frames: counts.death, fps: 6, loop: false, pose: death },
+    { name: 'channel', frames: counts.channel, fps: 6, loop: true, pose: withGait('channel', channel) },
   ];
-  return all.map((a) => ({ ...a, pose: withCape(a.name, a.pose) }));
+  return all.map((a) => ({ ...a, pose: withSecondary(a.name, a.pose) }));
 }

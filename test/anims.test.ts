@@ -76,6 +76,45 @@ describe('cast', () => {
   });
 });
 
+describe('channel', () => {
+  const caster = { ...PRESETS.mage };
+  const channel = humanoidAnimations().find((a) => a.name === 'channel')!;
+
+  it('loops, and comes after the older rows so their positions in a sheet stay put', () => {
+    const names = humanoidAnimations().map((a) => a.name);
+    expect(names.slice(-2)).toEqual(['death', 'channel']);
+    expect(channel.loop).toBe(true);
+  });
+
+  it('holds both hands out in front with the spell always lit', () => {
+    for (const t of [0, 0.25, 0.5, 0.75]) {
+      const p = channel.pose(t, caster, 0.8);
+      expect(p.joints.shoulderL![0]).toBeGreaterThan(60);
+      expect(p.joints.shoulderR![0]).toBeGreaterThan(60);
+      expect(p.fx!.scale).toBeGreaterThan(0.5);
+      expect(p.fx!.pos[2]).toBeGreaterThan(0.4);
+    }
+  });
+
+  it('closes the loop: t = 1 matches t = 0, sparks a quarter turn on', () => {
+    const a = channel.pose(0, caster, 0.8);
+    const b = channel.pose(1, caster, 0.8);
+    for (const [name, rot] of Object.entries(a.joints)) {
+      rot.forEach((v, i) => expect(b.joints[name as JointName]![i]).toBeCloseTo(v));
+    }
+    expect(b.fx!.scale).toBeCloseTo(a.fx!.scale);
+    expect(b.fx!.spin! - a.fx!.spin!).toBe(90);
+  });
+
+  it('keeps a staff upright', () => {
+    const u = unit('staff', 'none');
+    for (const t of [0, 0.25, 0.5]) {
+      const j = channel.pose(t, u, 0.8).joints;
+      expect(j.shoulderR![0] + j.elbowR![0] + j.handR![0]).toBeCloseTo(180);
+    }
+  });
+});
+
 describe('cast blends with idle', () => {
   it('starts and ends in the idle stance', () => {
     const anims = humanoidAnimations();

@@ -47,17 +47,61 @@ export interface Pose {
   opacity?: number;
 }
 
-export interface AnimationDef {
+/** One sheet row. Defaults to the humanoid's params and pose; beasts bring their own. */
+export interface AnimationDef<U = UnitParams, P = Pose> {
   name: string;
   frames: number;
   fps: number;
   loop: boolean;
   /** t in [0, 1): looping animations never sample t = 1, one-shots end on it. */
-  pose: (t: number, unit: UnitParams, hipHeight: number) => Pose;
+  pose: (t: number, unit: U, hipHeight: number) => P;
 }
 
 /** Normalised time for frame i, matching how the animation is played back. */
 export function frameTime(anim: Pick<AnimationDef, 'frames' | 'loop'>, i: number): number {
   if (anim.loop) return i / anim.frames;
   return anim.frames <= 1 ? 0 : i / (anim.frames - 1);
+}
+
+/**
+ * A quadruped's joints. The pelvis sits over the hind legs and carries everything else; the
+ * body runs forward (+Z) from it. Same rotation rules as the humanoid's; for parts that point
+ * forward (neck, head, jaw) pitch > 0 tips them up, for the tail it lowers it, and a jaw
+ * opens with pitch < 0. Front and hind legs are F and B, then L or R.
+ */
+export const BEAST_JOINTS = [
+  'pelvis',
+  'chest',
+  'neck',
+  'head',
+  'jaw',
+  'legFL',
+  'kneeFL',
+  'legFR',
+  'kneeFR',
+  'legBL',
+  'kneeBL',
+  'legBR',
+  'kneeBR',
+  'tail',
+  'tailMid',
+  'tailTip',
+  // spread sideways at rest: roll > 0 raises a wing, yaw > 0 sweeps it back (folds it)
+  'wingL',
+  'wingTipL',
+  'wingR',
+  'wingTipR',
+] as const;
+
+export type BeastJoint = (typeof BEAST_JOINTS)[number];
+
+export interface BeastPose {
+  joints: Partial<Record<BeastJoint, JointRot>>;
+  /** Offset of the pelvis from its rest position, in world units. */
+  offset?: [number, number, number];
+  /** Turn of the whole body around the vertical axis, in degrees. */
+  turn?: number;
+  /** Spell effect: position relative to the mouth (in head space, facing +Z), size and spin; hidden when absent. */
+  fx?: { pos: [number, number, number]; scale: number; spin?: number };
+  opacity?: number;
 }

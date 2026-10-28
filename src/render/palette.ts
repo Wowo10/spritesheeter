@@ -30,6 +30,10 @@ export const RAMPS = {
   venom: ['#1a6a10', '#3aa82a', '#7ee050', '#e8ffc0'],
   rotSkin: ['#262c1c', '#4a5434', '#76805a', '#a4ac84'],
   ghost: ['#34425e', '#6280a4', '#a4c2de', '#e6f6ff'],
+  // beast hides: grey fur, sandy big-cat fur, swamp-green scales
+  fur: ['#2c2824', '#56504a', '#8a8278', '#c4bcb0'],
+  tawny: ['#4e3a1e', '#8c6c3c', '#c4a064', '#ead29a'],
+  scales: ['#142218', '#2a4230', '#4a6a48', '#7e9a6a'],
 } as const satisfies Record<string, readonly [string, string, string, string]>;
 
 export type RampName = keyof typeof RAMPS;
@@ -41,6 +45,8 @@ export const SKIN_RAMPS: RampName[] = ['skin', 'greenSkin', 'paleSkin'];
 export const UNDEAD_SKIN_RAMPS: RampName[] = ['rotSkin', 'ghost'];
 export const CLOTH_RAMPS: RampName[] = ['team', 'red', 'blue', 'green', 'purple', 'yellow'];
 export const METAL_RAMPS: RampName[] = ['steel', 'gold', 'bronze'];
+/** Fur, hide and scales for beasts. */
+export const HIDE_RAMPS: RampName[] = ['fur', 'hair', 'leather', 'tawny', 'dark', 'bone', 'paleSkin', 'scales', 'greenSkin', 'red', 'yellow', 'rotSkin', 'ghost'];
 /** Glowing ramps for spell effects. */
 export const MAGIC_RAMPS: RampName[] = ['arcane', 'holy', 'venom', 'fire'];
 

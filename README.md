@@ -28,6 +28,8 @@ Drag the divider to resize the panels. Double-click it to reset.
 
 ### Unit
 
+Pick a **type**: `humanoid` or `beast` (four-legged animals, see [Beasts](#beasts)).
+
 Pick a **preset** (swordsman, axeman, spearman, archer, knight, berserker, duelist, shieldbearer, worker, militia, mage, warlock, priest, shaman, guard, brute, ghost, zombie) or **🎲 randomize**. Typing a **seed** gives a repeatable random unit. You can then tweak:
 
 - **Body:** height, bulk, head size, torso, shoulders, arm and leg proportions
@@ -39,6 +41,22 @@ Pick a **preset** (swordsman, axeman, spearman, archer, knight, berserker, dueli
   - **opacity:** below 1 the sprite is drawn see-through as a dither pattern that shimmers between frames. Glowing colours (magic, eyes) stay more solid.
   - **glowing eyes:** eyes in the magic colour
   - **ground shadow:** a dark blob under the unit, which shrinks as the unit rises; it makes floating units readable
+
+### Beasts
+
+With **type** set to `beast`, the unit is a four-legged animal. Presets: wolf, hound, warhound, hellhound, ghostWolf, bear, boar, lion, panther, rat, crocodile, lizard, dragon, griffin, salamander. **🎲 randomize** varies one of the basic body plans. You can then tweak:
+
+- **Body:** size, bulk, body length and depth, leg length, neck, head, snout (or a hooked **beak**) and tail
+- **sprawl:** `0` puts the legs straight under the body (dogs, bears); `1` splays them out to the sides (lizards, crocodiles). Sprawled beasts swing their body side to side as they walk, and roll onto their backs when they die.
+- **Features:** ears (pointed, floppy, round), horns or tusks, and a back of mane, spikes or a bristly ridge
+- **barding:** the team-coloured gear that shows whose beast it is: a collar, a saddle cloth, or armour plates over a team-coloured skirt
+- **wings:** `bat` (membrane between finger bones) or `feathered`, with their size and colour. Grounded beasts keep them folded along their sides and spread them to bite, roar and snarl.
+- **flying:** with wings, the beast stays in the air the whole time, flapping once per loop, its legs tucked up and its tail streaming behind. It drops to the ground when it dies. Turn on **ground shadow** so it reads as airborne. Spread wings are wide, so flying beasts look best at 48 px or larger.
+- **Colours:** hide, belly, mane/spikes, metal and magic
+- **magic breath:** the beast spits its spell in `cast` and breathes a steady stream of it in `channel`
+- **opacity, glowing eyes, ground shadow:** as for humanoids. A see-through beast fades away when it dies.
+
+Beasts fill the same sheet rows as humanoids: `attack` is a bite, `cast` is a roar (or spitting the spell, with magic breath), `death` keels over, and `channel` is a snarling crouch (or the breath stream). Long beasts like crocodiles nearly fill a 32 px frame; use 48 px or larger to give them room.
 
 ### Custom model
 
@@ -93,8 +111,8 @@ In short, columns are the directions `N, NE, E, SE, S`, and the west-facing ones
 ```
 src/
   main.ts              app wiring, GUI, export actions
-  unit/                procedural humanoid: parameters, presets, body parts
-  anim/                humanoid poses and animation definitions
+  unit/                procedural humanoid and beast: parameters, presets, body parts
+  anim/                humanoid and beast poses, animation definitions
   custom/              loading and posing imported models
   render/              palette, palette materials, sprite camera, pixel downsampling
   export/              sheet packing, PNG/JSON download

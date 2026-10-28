@@ -1,4 +1,5 @@
 import GUI, { type Controller } from 'lil-gui';
+import { beastAnimations } from './anim/beast-anims';
 import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, humanoidAnimations, type AnimationName } from './anim/humanoid-anims';
 import { frameTime } from './anim/types';
 import { loadModelFiles, MODEL_EXTENSIONS } from './custom/load';
@@ -6,10 +7,12 @@ import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
 import { downloadJson, downloadPng, sheetToCanvas } from './export/download';
 import { packSheet, type AnimationFrames, type Sheet } from './export/packer';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
-import { CLOTH_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
+import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
 import type { Outline } from './render/postprocess';
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings } from './render/spriteRenderer';
 import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
+import { applyBeastPose, buildBeast, disposeBeast, type Beast } from './unit/beast';
+import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
 import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
 import { ARMORS, BODIES, CAPES, GAITS, HAIR_STYLES, HAND_ITEMS, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
 import { Preview3D } from './ui/preview3d';
@@ -37,9 +40,15 @@ interface Playable {
   apply: (t: number) => number | void;
 }
 
+const KINDS = ['humanoid', 'beast'] as const;
+type Kind = (typeof KINDS)[number];
+
 const state = {
+  /** Which procedural generator is in use; each keeps its own settings. */
+  kind: 'humanoid' as Kind,
   preset: 'swordsman',
   unit: { ...PRESETS.swordsman } as UnitParams,
+  beast: { ...BEAST_PRESETS.wolf } as BeastParams,
   frames: { ...DEFAULT_FRAME_COUNTS },
   sprite: { ...DEFAULT_SPRITE_SETTINGS, thresholds: [...DEFAULT_SPRITE_SETTINGS.thresholds] } as SpriteSettings,
   lighting: {
@@ -65,7 +74,8 @@ const state = {
 
 /** Values a shared link may set for fields that take one of a set; see mergeSettings. */
 const SHARE_CHOICES: Record<string, readonly unknown[]> = {
-  preset: [...Object.keys(PRESETS), 'random'],
+  kind: KINDS,
+  preset: [...Object.keys(PRESETS), ...Object.keys(BEAST_PRESETS), 'random'],
   previewAnim: ANIMATION_NAMES,
   team: TEAM_COLOR_NAMES,
   'unit.helmet': HELMETS,
@@ -77,6 +87,12 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
   'unit.gait': GAITS,
   'unit.body': BODIES,
   ...Object.fromEntries(['skin', 'cloth', 'metal', 'hair', 'magic', 'capeColor'].map((k) => [`unit.${k}`, RAMP_NAMES])),
+  'beast.ears': EARS,
+  'beast.horns': HORNS,
+  'beast.back': BACKS,
+  'beast.barding': BARDINGS,
+  'beast.wings': WINGS,
+  ...Object.fromEntries(['hide', 'belly', 'accent', 'metal', 'magic', 'wingColor'].map((k) => [`beast.${k}`, RAMP_NAMES])),
   'sprite.frameSize': FRAME_SIZES,
   'sprite.outline': OUTLINES,
   'sprite.supersample': SUPERSAMPLES,
@@ -87,8 +103,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
  * stays behind, since its file can't travel in a URL. The objects are state's own.
  */
 function sharedSettings() {
-  const { preset, unit, frames, sprite, lighting, previewAnim, team } = state;
-  return { preset, unit, frames, sprite, lighting, previewAnim, team };
+  const { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, team } = state;
+  return { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, team };
 }
 
 /** Applies the settings of a share link the page was opened from, before the GUI is built. */
@@ -129,6 +145,7 @@ const sheetCanvas = document.getElementById('sheet') as HTMLCanvasElement;
 const side = document.getElementById('side')!;
 
 let unit: Humanoid | null = null;
+let beast: Beast | null = null;
 let custom: CustomModel | null = null;
 let playables: Playable[] = [];
 let rendered: AnimationFrames[] = [];
@@ -136,10 +153,15 @@ let sheet: Sheet | null = null;
 
 function rebuild(): void {
   if (unit) disposeHumanoid(unit);
+  if (beast) disposeBeast(beast);
   unit = null;
+  beast = null;
   custom?.root.removeFromParent();
   if (state.source === 'model' && custom) {
     view.scene.add(custom.root);
+  } else if (state.kind === 'beast') {
+    beast = buildBeast(state.beast, mats);
+    view.scene.add(beast.root);
   } else {
     unit = buildHumanoid(state.unit, mats);
     view.scene.add(unit.root);
@@ -161,6 +183,17 @@ function sheetRows(): Playable[] {
     });
     return rows.length > 0 ? rows : [{ name: 'idle', frames: 1, fps: 1, loop: true, apply: () => m.sample(null, 0, true) }];
   }
+  const b = beast;
+  if (b) {
+    return beastAnimations(state.frames).map((d) => ({
+      ...d,
+      apply: (t: number) => {
+        const pose = d.pose(t, state.beast, b.hipHeight);
+        applyBeastPose(b, pose);
+        return pose.opacity;
+      },
+    }));
+  }
   const u = unit!;
   return defs.map((d) => ({
     ...d,
@@ -173,7 +206,7 @@ function sheetRows(): Playable[] {
 }
 
 function regenerate(): void {
-  const root = state.source === 'model' ? custom?.root : unit?.root;
+  const root = state.source === 'model' ? custom?.root : (unit ?? beast)?.root;
   if (!root) return;
   mats.setLighting({ ...state.lighting, thresholds: state.sprite.thresholds });
   sprites.configureCamera(view.ortho, state.sprite);
@@ -230,12 +263,12 @@ function queueRegenerate(): void {
 
 function exportName(): string {
   if (state.source === 'model' && custom) return custom.name.replace(/[^\w.-]+/g, '_');
-  return `${state.preset}-${state.unit.seed}`;
+  return `${state.preset}-${procedural().seed}`;
 }
 
 /** What the sheet was made from, for the JSON. */
 function exportSource(): Record<string, unknown> {
-  if (state.source !== 'model' || !custom) return { unit: state.unit };
+  if (state.source !== 'model' || !custom) return state.kind === 'beast' ? { beast: state.beast } : { unit: state.unit };
   return {
     model: {
       file: custom.name,
@@ -270,25 +303,46 @@ function exportAllTeams(): void {
 const gui = new GUI({ title: 'ssheet' });
 const refreshGui = () => gui.controllersRecursive().forEach((c: Controller) => c.updateDisplay());
 
+/** The settings of the procedural generator in use. */
+function procedural(): UnitParams | BeastParams {
+  return state.kind === 'beast' ? state.beast : state.unit;
+}
+
+const presetNames = (kind: Kind) => Object.keys(kind === 'beast' ? BEAST_PRESETS : PRESETS);
+
+function applyPreset(name: string): void {
+  if (state.kind === 'beast') state.beast = { ...BEAST_PRESETS[name], seed: state.beast.seed };
+  else state.unit = { ...PRESETS[name], seed: state.unit.seed };
+}
+
+function randomize(seed: number): void {
+  state.preset = 'random';
+  if (state.kind === 'beast') state.beast = randomBeast(seed);
+  else state.unit = randomUnit(seed);
+}
+
+/** The preset last picked for each type, so switching back and forth keeps its name. */
+const lastPreset: Record<Kind, string> = { humanoid: 'swordsman', beast: 'wolf', [state.kind]: state.preset };
+
 const unitFolder = gui.addFolder('Unit');
 unitFolder
-  .add(state, 'preset', Object.keys(PRESETS))
-  .onChange((name: string) => {
-    state.unit = { ...PRESETS[name], seed: state.unit.seed };
+  .add(state, 'kind', KINDS)
+  .name('type')
+  .onChange((kind: Kind) => {
+    lastPreset[kind === 'beast' ? 'humanoid' : 'beast'] = state.preset;
+    state.preset = lastPreset[kind];
     rebindUnit();
     rebuild();
   });
 const actions = {
   randomize() {
-    state.preset = 'random';
-    state.unit = randomUnit(Math.floor(Math.random() * 1e6));
+    randomize(Math.floor(Math.random() * 1e6));
     rebindUnit();
     rebuild();
   },
   export: exportSheet,
   exportAllTeams,
 };
-unitFolder.add(actions, 'randomize').name('🎲 randomize');
 
 /**
  * A bow takes both hands: picking one empties the other hand, and picking
@@ -303,17 +357,7 @@ function onHandChange(key: 'rightHand' | 'leftHand', item: HandItem): void {
   rebuild();
 }
 
-let unitControllers: Controller[] = [];
-function rebindUnit(): void {
-  unitControllers.forEach((c) => c.destroy());
-  const u = state.unit;
-  const seed = unitFolder.add(u, 'seed').onFinishChange((seed: number) => {
-    state.preset = 'random';
-    state.unit = randomUnit(seed);
-    // rebinding destroys this very controller, so leave its callback first
-    setTimeout(rebindUnit);
-    rebuild();
-  });
+function humanoidControllers(u: UnitParams): Controller[] {
   const hand = (key: 'rightHand' | 'leftHand', label: string) =>
     unitFolder.add(u, key, HAND_ITEMS).name(label).onChange((item: HandItem) => onHandChange(key, item));
   const plain: Controller[] = [
@@ -347,7 +391,62 @@ function rebindUnit(): void {
     unitFolder.add(u, 'shadow').name('ground shadow'),
   ];
   [...plain, ...colors, ...spooky].forEach((c) => c.onChange(rebuild));
-  unitControllers = [seed, ...plain, ...hands, ...colors, ...spooky];
+  return [...plain, ...hands, ...colors, ...spooky];
+}
+
+function beastControllers(b: BeastParams): Controller[] {
+  const controllers = [
+    unitFolder.add(b, 'size', 0.6, 1.5, 0.01),
+    unitFolder.add(b, 'bulk', 0.7, 1.6, 0.01),
+    unitFolder.add(b, 'bodyLength', 0.6, 1.5, 0.01).name('body length'),
+    unitFolder.add(b, 'bodyDepth', 0.5, 1.4, 0.01).name('body depth'),
+    unitFolder.add(b, 'legLength', 0.4, 1.4, 0.01).name('leg length'),
+    unitFolder.add(b, 'sprawl', 0, 1, 0.05),
+    unitFolder.add(b, 'neckLength', 0, 1.6, 0.01).name('neck length'),
+    unitFolder.add(b, 'headSize', 0.7, 1.5, 0.01).name('head size'),
+    unitFolder.add(b, 'snoutLength', 0.4, 2.2, 0.01).name('snout length'),
+    unitFolder.add(b, 'beak'),
+    unitFolder.add(b, 'tailLength', 0, 1.6, 0.01).name('tail length'),
+    unitFolder.add(b, 'tailThickness', 0.3, 1.6, 0.01).name('tail thickness'),
+    unitFolder.add(b, 'ears', EARS),
+    unitFolder.add(b, 'horns', HORNS),
+    unitFolder.add(b, 'back', BACKS),
+    unitFolder.add(b, 'barding', BARDINGS),
+    unitFolder.add(b, 'wings', WINGS),
+    unitFolder.add(b, 'wingSize', 0.6, 1.4, 0.01).name('wing size'),
+    unitFolder.add(b, 'wingColor', HIDE_RAMPS).name('wing color'),
+    unitFolder.add(b, 'flying'),
+    unitFolder.add(b, 'hide', HIDE_RAMPS),
+    unitFolder.add(b, 'belly', HIDE_RAMPS),
+    unitFolder.add(b, 'accent', HIDE_RAMPS).name('mane / spikes'),
+    unitFolder.add(b, 'metal', METAL_RAMPS),
+    unitFolder.add(b, 'magic', MAGIC_RAMPS).name('magic color'),
+    unitFolder.add(b, 'breath').name('magic breath'),
+    unitFolder.add(b, 'opacity', 0.25, 1, 0.25),
+    unitFolder.add(b, 'glowEyes').name('glowing eyes'),
+    unitFolder.add(b, 'shadow').name('ground shadow'),
+  ];
+  controllers.forEach((c) => c.onChange(rebuild));
+  return controllers;
+}
+
+let unitControllers: Controller[] = [];
+function rebindUnit(): void {
+  unitControllers.forEach((c) => c.destroy());
+  // rebinding destroys the very controller whose callback triggered it, so leave that first
+  const preset = unitFolder.add(state, 'preset', presetNames(state.kind)).onChange((name: string) => {
+    applyPreset(name);
+    setTimeout(rebindUnit);
+    rebuild();
+  });
+  const random = unitFolder.add(actions, 'randomize').name('🎲 randomize');
+  const seed = unitFolder.add(procedural(), 'seed').onFinishChange((seed: number) => {
+    randomize(seed);
+    setTimeout(rebindUnit);
+    rebuild();
+  });
+  const params = state.kind === 'beast' ? beastControllers(state.beast) : humanoidControllers(state.unit);
+  unitControllers = [preset, random, seed, ...params];
   refreshGui();
 }
 rebindUnit();

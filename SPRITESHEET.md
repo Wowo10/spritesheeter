@@ -126,6 +126,8 @@ Looping animations (`idle`, `walk`, `channel`) are rendered without a duplicate 
 
 `channel` is a sustained spell: the unit holds both hands out with a pulsing spell in front of them. Play it for as long as the unit is channelling, such as for a beam, a heal over time or a summon, then switch back to `idle`. A game will usually draw the beam or other target effect itself, starting from the spell's position.
 
+Beast sheets have the same rows: `attack` is a bite, `cast` a roar or, for beasts with magic breath, a spat spell, and `channel` a snarl or a steady breath stream. Their last `death` frame is the body lying on its side, or on its back for lizards and crocodiles.
+
 New animations are added after the existing ones (`channel` comes after `death`), so the rows of animations that were already in a sheet don't move when you re-export.
 
 ### Picking a direction from movement

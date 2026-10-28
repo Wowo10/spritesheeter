@@ -11,6 +11,7 @@ import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
 import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
 import type { Outline } from './render/postprocess';
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings } from './render/spriteRenderer';
+import { UndoHistory } from './history';
 import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
 import { applyBeastPose, buildBeast, disposeBeast, type Beast } from './unit/beast';
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
@@ -537,6 +538,14 @@ function rebindUnit(): void {
 }
 rebindUnit();
 
+// undo and redo share a row: redo's button moves into undo's, and each is greyed out by its
+// own disabled attribute, since lil-gui's disable() would grey out (and block) the whole row
+const undoController = tools.add({ undo: () => stepHistory('undo') }, 'undo').name('↶ undo');
+const redoController = tools.add({ redo: () => stepHistory('redo') }, 'redo').name('↷ redo');
+const [undoButton, redoButton] = [undoController, redoController].map((c) => c.domElement.querySelector('button')!);
+undoController.domElement.classList.add('buttonRow');
+undoController.domElement.querySelector('.widget')!.append(redoButton);
+redoController.domElement.remove();
 tools.add(actions, 'randomize').name('🎲 randomize');
 tools.add(seedOf, 'seed').onFinishChange((seed: number) => {
   randomize(seed);
@@ -699,6 +708,64 @@ function rebindModel(): void {
   modelFolders = [rows, materials];
 }
 rebindModel();
+
+// --- undo -------------------------------------------------------------------
+
+/** Settings as recorded for undo: everything a share link carries. */
+const snapshot = () => JSON.stringify(sharedSettings());
+const undoStack = new UndoHistory(snapshot());
+
+function updateUndoButtons(): void {
+  undoButton.disabled = !undoStack.canUndo;
+  redoButton.disabled = !undoStack.canRedo;
+}
+updateUndoButtons();
+
+function recordSettings(): void {
+  if (undoStack.record(snapshot())) updateUndoButtons();
+}
+
+function restoreSettings(text: string): void {
+  const saved = JSON.parse(text);
+  // whole objects for the unit, whose controllers are rebound below; the rest in place, so
+  // their controllers stay bound
+  state.unit = saved.unit;
+  state.beast = saved.beast;
+  const shared = sharedSettings();
+  mergeSettings(shared, saved, SHARE_CHOICES);
+  Object.assign(state, shared);
+  lastPreset[state.kind] = state.preset;
+  rebindUnit();
+  rebuild();
+  applyTeam();
+}
+
+function stepHistory(dir: 'undo' | 'redo'): void {
+  const saved = dir === 'undo' ? undoStack.undo() : undoStack.redo();
+  if (saved !== null) restoreSettings(saved);
+  updateUndoButtons();
+}
+
+for (const g of [gui, tools]) {
+  // a panel hears of a change before the control's own handler runs (the seed box randomizes
+  // in its own), so record once every handler is done; a drag records once, on release
+  g.onFinishChange(() => setTimeout(recordSettings));
+  // buttons (randomize) only report onChange; the rest (export, undo) leave nothing to record
+  g.onChange((e) => {
+    if (typeof e.value === 'function') setTimeout(recordSettings);
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  // text fields keep their own undo
+  if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select')) return;
+  const key = e.key.toLowerCase();
+  const dir = key === 'z' ? (e.shiftKey ? 'redo' : 'undo') : key === 'y' && !e.shiftKey ? 'redo' : null;
+  if (!dir) return;
+  e.preventDefault();
+  stepHistory(dir);
+});
 
 // dropping files anywhere loads them: a model, or animations for the loaded one
 window.addEventListener('dragover', (e) => e.preventDefault());

@@ -96,6 +96,10 @@ Pick which animation to **preview**, and set the frame count (1–12) for each o
 
 Light direction, height and strength, front fill, ambient, and the thresholds that split the lighting into the 4 shades of each ramp.
 
+## Undo
+
+**↶ undo** and **↷ redo**, at the top of the **Randomize & share** panel, step back and forth through your changes: every slider (once, when you let go), choice, preset, 🎲 randomize and seed. Ctrl+Z (⌘Z on a Mac) undoes. Ctrl+Shift+Z or Ctrl+Y redoes. Inside a text or number field those keys edit the text as usual. Undo covers the same settings as a share link, so a loaded custom model's settings aren't included. It keeps the last 100 steps, for as long as the page is open.
+
 ## Sharing settings
 
 **🔗 copy share link** puts every setting in the address bar and copies the link: the unit, frame counts, sprite and lighting settings, preview animation and team colour. Anyone who opens the link gets the same unit, rendered the same way. Bookmark it to keep a unit you like.

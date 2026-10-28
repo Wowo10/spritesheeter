@@ -23,7 +23,7 @@ import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit
 import { ARMORS, BODIES, CAPES, GAITS, HAIR_STYLES, HAND_ITEMS, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
 import { applyVehiclePose, buildVehicle, disposeVehicle, type Vehicle } from './unit/vehicle';
 import { randomVehicle, VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
-import { Preview3D } from './ui/preview3d';
+import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
 import { CompassPreview } from './ui/spritePreview';
 import { initSplitter } from './ui/splitter';
 import './style.css';
@@ -782,6 +782,8 @@ state.sprite.thresholds.forEach((_, i) =>
 
 const viewFolder = restoreOpen(gui.addFolder('View'), true);
 viewFolder.add(view, 'spriteView').name('sprite camera');
+// wheel over the view zooms too, double-click resets
+viewFolder.add(view.ortho, 'zoom', MIN_ZOOM, MAX_ZOOM, 0.01).name('sprite zoom').onChange((z: number) => view.setSpriteZoom(z)).listen();
 
 const exportFolder = restoreOpen(gui.addFolder('Export'));
 for (const name of ANIMATION_NAMES) exportFolder.add(state.exportAnims, name);

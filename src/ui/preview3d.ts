@@ -1,6 +1,9 @@
 import { Color, GridHelper, OrthographicCamera, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
+export const MIN_ZOOM = 0.25;
+export const MAX_ZOOM = 16;
+
 /** Owns the WebGL renderer and scene; the sprite renderer borrows both. */
 export class Preview3D {
   readonly renderer: WebGLRenderer;
@@ -24,6 +27,16 @@ export class Preview3D {
     this.controls = new OrbitControls(this.perspective, this.renderer.domElement);
     this.controls.target.set(0, 0.85, 0);
     this.controls.update();
+
+    // the sprite camera view zooms on its own (orbit controls only move the perspective camera)
+    this.renderer.domElement.addEventListener('wheel', (e) => {
+      if (!this.spriteView) return;
+      e.preventDefault();
+      this.setSpriteZoom(this.ortho.zoom * Math.exp(-e.deltaY * 0.002));
+    }, { passive: false });
+    this.renderer.domElement.addEventListener('dblclick', () => {
+      if (this.spriteView) this.setSpriteZoom(1);
+    });
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
@@ -53,7 +66,13 @@ export class Preview3D {
     c.updateProjectionMatrix();
   }
 
+  setSpriteZoom(zoom: number): void {
+    this.ortho.zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+    this.ortho.updateProjectionMatrix();
+  }
+
   render(): void {
+    this.controls.enabled = !this.spriteView;
     this.renderer.render(this.scene, this.spriteView ? this.ortho : this.perspective);
   }
 }

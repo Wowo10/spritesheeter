@@ -1,6 +1,4 @@
-import { Color, OrthographicCamera, Scene, WebGLRenderer, WebGLRenderTarget } from 'three';
-import { applyPose, type Humanoid } from '../unit/humanoid';
-import type { Pose } from '../anim/types';
+import { Color, type Object3D, OrthographicCamera, Scene, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { DEFAULT_LIGHTING, ID_STEP, ShadeMode, type MaterialLibrary } from './materials';
 import { downscaleFrame, type IndexedFrame, type PostprocessSettings } from './postprocess';
 
@@ -67,8 +65,11 @@ export class SpriteRenderer {
     cam.updateProjectionMatrix();
   }
 
-  /** Renders every pose in every direction, so the render target is set up once per batch. */
-  renderFrames(unit: Humanoid, poses: Pose[], s: SpriteSettings): Map<Direction, IndexedFrame[]> {
+  /**
+   * Renders `count` frames in every direction, so the render target is set up once per batch.
+   * `setFrame(i)` puts the subject in its i-th frame; `root` is turned to face each direction.
+   */
+  renderFrames(root: Object3D, count: number, setFrame: (i: number) => void, s: SpriteSettings): Map<Direction, IndexedFrame[]> {
     const size = s.frameSize * s.supersample;
     this.prepare(size);
     this.configureCamera(this.camera, s);
@@ -76,11 +77,11 @@ export class SpriteRenderer {
     const prevTarget = this.renderer.getRenderTarget();
     const prevClear = this.renderer.getClearColor(new Color());
     const prevAlpha = this.renderer.getClearAlpha();
-    const prevYaw = unit.root.rotation.y;
+    const prevYaw = root.rotation.y;
     const prevBackground = this.scene.background;
     // a scene background would fill the target opaquely and destroy the transparency
     this.scene.background = null;
-    const hidden = this.scene.children.filter((c) => c !== unit.root && c.visible);
+    const hidden = this.scene.children.filter((c) => c !== root && c.visible);
     hidden.forEach((c) => (c.visible = false));
     this.renderer.setRenderTarget(this.target);
     this.renderer.setClearColor(0x000000, 0);
@@ -88,10 +89,10 @@ export class SpriteRenderer {
     const result = new Map<Direction, IndexedFrame[]>();
     try {
       for (const dir of DIRECTIONS) {
-        unit.root.rotation.y = (DIRECTION_YAW[dir] * Math.PI) / 180;
+        root.rotation.y = (DIRECTION_YAW[dir] * Math.PI) / 180;
         const frames: IndexedFrame[] = [];
-        for (const pose of poses) {
-          applyPose(unit, pose);
+        for (let i = 0; i < count; i++) {
+          setFrame(i);
           this.pass(ShadeMode.Id, this.idBuf, size);
           this.pass(ShadeMode.Light, this.lightBuf, size);
           frames.push(downscaleFrame(this.idBuf, this.lightBuf, s.frameSize, s.frameSize, s.supersample, ID_STEP, s));
@@ -102,7 +103,7 @@ export class SpriteRenderer {
       this.mats.setMode(ShadeMode.Preview);
       this.renderer.setRenderTarget(prevTarget);
       this.renderer.setClearColor(prevClear, prevAlpha);
-      unit.root.rotation.y = prevYaw;
+      root.rotation.y = prevYaw;
       this.scene.background = prevBackground;
       hidden.forEach((c) => (c.visible = true));
     }

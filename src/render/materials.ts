@@ -48,11 +48,24 @@ export function lightDirection(azimuthDeg: number, elevationDeg: number): Vector
   return new Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el));
 }
 
+// three's chunks add skinning and morph targets, so rigged custom models deform; they compile
+// to nothing for plain meshes
 const vertexShader = /* glsl */ `
+  #include <common>
+  #include <morphtarget_pars_vertex>
+  #include <skinning_pars_vertex>
   varying vec3 vNormal;
   void main() {
-    vNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    #include <morphinstance_vertex>
+    #include <beginnormal_vertex>
+    #include <morphnormal_vertex>
+    #include <skinbase_vertex>
+    #include <skinnormal_vertex>
+    #include <begin_vertex>
+    #include <morphtarget_vertex>
+    #include <skinning_vertex>
+    vNormal = normalize(normalMatrix * objectNormal);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
   }
 `;
 

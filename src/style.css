@@ -31,6 +31,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 }
 .sheetWrap { overflow: auto; max-height: 60vh; }
 .lil-gui.root { position: absolute; top: 8px; right: calc(var(--side-width) + 20px); }
+#view3d > .lil-gui.root { top: auto; right: auto; left: 8px; bottom: 8px; }
 @media (max-width: 900px) {
   #app { grid-template-columns: 1fr; grid-template-rows: 50vh auto; height: auto; }
   #splitter { display: none; }

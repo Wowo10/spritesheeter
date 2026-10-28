@@ -300,8 +300,43 @@ function exportAllTeams(): void {
 
 // --- GUI --------------------------------------------------------------------
 
-const gui = new GUI({ title: 'ssheet' });
-const refreshGui = () => gui.controllersRecursive().forEach((c: Controller) => c.updateDisplay());
+const gui = new GUI({ title: 'menu' });
+// randomizing and sharing get their own panel, in the 3D view's corner
+const tools = new GUI({ title: 'Randomize & share', container: document.getElementById('view3d')! });
+const refreshGui = () => [gui, tools].forEach((g) => g.controllersRecursive().forEach((c: Controller) => c.updateDisplay()));
+
+// --- which folders are closed, remembered across visits (by title, which are all unique)
+
+const CLOSED_KEY = 'ssheet.closedFolders';
+
+function loadClosed(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(CLOSED_KEY) ?? '{}');
+  } catch {
+    // storage may be unavailable (private mode) or hold junk
+    return {};
+  }
+}
+const closedFolders = loadClosed();
+
+/** Opens or closes a GUI or folder as it was last left. */
+function restoreOpen(folder: GUI, closedByDefault = false): GUI {
+  return folder.open(!(closedFolders[folder._title] ?? closedByDefault));
+}
+
+for (const g of [gui, tools]) {
+  g.onOpenClose((changed) => {
+    closedFolders[changed._title] = changed._closed;
+    try {
+      localStorage.setItem(CLOSED_KEY, JSON.stringify(closedFolders));
+    } catch {
+      // not remembered, then
+    }
+  });
+  restoreOpen(g);
+}
+
+const addTeamController = (folder: GUI) => folder.add(state, 'team', TEAM_COLOR_NAMES).name('team color').onChange(applyTeam);
 
 /** The settings of the procedural generator in use. */
 function procedural(): UnitParams | BeastParams {
@@ -324,7 +359,7 @@ function randomize(seed: number): void {
 /** The preset last picked for each type, so switching back and forth keeps its name. */
 const lastPreset: Record<Kind, string> = { humanoid: 'swordsman', beast: 'wolf', [state.kind]: state.preset };
 
-const unitFolder = gui.addFolder('Unit');
+const unitFolder = restoreOpen(gui.addFolder('Unit'));
 unitFolder
   .add(state, 'kind', KINDS)
   .name('type')
@@ -342,6 +377,16 @@ const actions = {
   },
   export: exportSheet,
   exportAllTeams,
+};
+
+/** The seed of the generator in use, so one controller serves both. */
+const seedOf = {
+  get seed() {
+    return procedural().seed;
+  },
+  set seed(seed: number) {
+    procedural().seed = seed;
+  },
 };
 
 /**
@@ -390,7 +435,7 @@ function humanoidControllers(u: UnitParams): Controller[] {
     unitFolder.add(u, 'glowEyes').name('glowing eyes'),
     unitFolder.add(u, 'shadow').name('ground shadow'),
   ];
-  [...plain, ...colors, ...spooky].forEach((c) => c.onChange(rebuild));
+  [...plain, ...colors, ...spooky].forEach((c) => c.onFinishChange(rebuild));
   return [...plain, ...hands, ...colors, ...spooky];
 }
 
@@ -426,7 +471,7 @@ function beastControllers(b: BeastParams): Controller[] {
     unitFolder.add(b, 'glowEyes').name('glowing eyes'),
     unitFolder.add(b, 'shadow').name('ground shadow'),
   ];
-  controllers.forEach((c) => c.onChange(rebuild));
+  controllers.forEach((c) => c.onFinishChange(rebuild));
   return controllers;
 }
 
@@ -439,17 +484,52 @@ function rebindUnit(): void {
     setTimeout(rebindUnit);
     rebuild();
   });
-  const random = unitFolder.add(actions, 'randomize').name('🎲 randomize');
-  const seed = unitFolder.add(procedural(), 'seed').onFinishChange((seed: number) => {
-    randomize(seed);
-    setTimeout(rebindUnit);
-    rebuild();
-  });
+  const team = addTeamController(unitFolder);
   const params = state.kind === 'beast' ? beastControllers(state.beast) : humanoidControllers(state.unit);
-  unitControllers = [preset, random, seed, ...params];
+  unitControllers = [preset, team, ...params];
   refreshGui();
 }
 rebindUnit();
+
+tools.add(actions, 'randomize').name('🎲 randomize');
+tools.add(seedOf, 'seed').onFinishChange((seed: number) => {
+  randomize(seed);
+  rebindUnit();
+  rebuild();
+});
+const SHARE_LABEL = '🔗 share';
+const shareController = tools.add({ share: copyShareLink }, 'share').name(SHARE_LABEL);
+
+const animFolder = restoreOpen(gui.addFolder('Animation'));
+animFolder.add(state, 'previewAnim', ANIMATION_NAMES).name('preview').onChange(showPreviewAnim);
+for (const name of ANIMATION_NAMES) {
+  animFolder.add(state.frames, name, 1, 12, 1).name(`${name} frames`).onFinishChange(queueRegenerate);
+}
+
+const spriteFolder = restoreOpen(gui.addFolder('Sprite'), true);
+spriteFolder.add(state.sprite, 'frameSize', FRAME_SIZES).onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'pixelsPerUnit', 6, 80, 0.5).name('pixels / unit').onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'elevation', 10, 70, 1).onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'anchorY', 0.5, 0.95, 0.01).name('ground anchor').onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'outline', OUTLINES).onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'coverage', 0.1, 0.9, 0.05).name('min coverage').onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'supersample', SUPERSAMPLES).onFinishChange(queueRegenerate);
+
+const lightFolder = restoreOpen(gui.addFolder('Lighting'), true);
+lightFolder.add(state.lighting, 'azimuth', -180, 180, 1).name('light from ← →').onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'elevation', -30, 90, 1).name('light height').onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'diffuse', 0, 1.5, 0.01).name('light strength').onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'fill', 0, 0.8, 0.01).name('front fill').onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'ambient', 0, 1, 0.01).onFinishChange(queueRegenerate);
+state.sprite.thresholds.forEach((_, i) =>
+  lightFolder.add(state.sprite.thresholds, String(i) as '0', 0, 1, 0.01).name(`shade ${i}|${i + 1}`).onFinishChange(queueRegenerate),
+);
+
+const viewFolder = restoreOpen(gui.addFolder('View'), true);
+viewFolder.add(view, 'spriteView').name('sprite camera');
+
+gui.add(actions, 'export').name('💾 export PNG + JSON');
+gui.add(actions, 'exportAllTeams').name('💾 export all team colors');
 
 // --- custom model -------------------------------------------------------------
 
@@ -505,32 +585,44 @@ async function openFiles(files: File[], mode: 'model' | 'anims' | 'auto'): Promi
   }
 }
 
-const modelFolder = gui.addFolder('Custom model');
+const modelFolder = restoreOpen(gui.addFolder('Custom model'));
 modelFolder.add({ load: () => modelPicker.click() }, 'load').name('📂 load .glb / .gltf / .fbx / .obj…');
 const sourceController = modelFolder
   .add(state, 'source', { 'procedural unit': 'unit', 'custom model': 'model' })
   .name('show')
   .onChange(() => {
-    unitFolder.show(state.source === 'unit');
+    showSource();
     rebuild();
   });
 
 let modelControllers: Controller[] = [];
+/** The custom model's own team colour control, as the unit's is hidden along with its folder. */
+let modelTeam: Controller | null = null;
+
+function showSource(): void {
+  unitFolder.show(state.source === 'unit');
+  modelTeam?.show(state.source === 'model');
+}
+
 let modelFolders: GUI[] = [];
 function rebindModel(): void {
   modelControllers.forEach((c) => c.destroy());
   modelFolders.forEach((f) => f.destroy());
   modelControllers = [];
   modelFolders = [];
+  modelTeam = null;
   sourceController.enable(!!custom).updateDisplay();
-  unitFolder.show(state.source === 'unit');
   const m = custom;
-  if (!m) return;
+  if (!m) return showSource();
 
+  const name = modelFolder.add({ name: m.name }, 'name').name('model').disable();
+  modelTeam = addTeamController(modelFolder);
+  showSource();
   modelControllers.push(
-    modelFolder.add({ name: m.name }, 'name').name('model').disable(),
+    name,
+    modelTeam,
     modelFolder.add({ add: () => animPicker.click() }, 'add').name('➕ add animations from file…'),
-    modelFolder.add(state.model, 'height', 0.3, 5, 0.05).onChange((h: number) => {
+    modelFolder.add(state.model, 'height', 0.3, 5, 0.05).onFinishChange((h: number) => {
       m.setHeight(h);
       queueRegenerate();
     }),
@@ -540,11 +632,11 @@ function rebindModel(): void {
     }),
   );
 
-  const rows = modelFolder.addFolder('Sheet rows');
+  const rows = restoreOpen(modelFolder.addFolder('Sheet rows'));
   const clipNames = [NO_CLIP, ...m.clips.map((c) => c.name)];
-  for (const row of ANIMATION_NAMES) rows.add(state.model.rows, row, clipNames).name(`${row} clip`).onChange(queueRegenerate);
+  for (const row of ANIMATION_NAMES) rows.add(state.model.rows, row, clipNames).name(`${row} clip`).onFinishChange(queueRegenerate);
 
-  const materials = modelFolder.addFolder('Materials → palette');
+  const materials = restoreOpen(modelFolder.addFolder('Materials → palette'));
   for (const mat of m.materials) {
     materials
       .add({ ramp: mat.ramp }, 'ramp', RAMP_NAMES)
@@ -564,40 +656,6 @@ window.addEventListener('drop', (e) => {
   e.preventDefault();
   openFiles([...(e.dataTransfer?.files ?? [])], 'auto');
 });
-
-const animFolder = gui.addFolder('Animation');
-animFolder.add(state, 'previewAnim', ANIMATION_NAMES).name('preview').onChange(showPreviewAnim);
-for (const name of ANIMATION_NAMES) {
-  animFolder.add(state.frames, name, 1, 12, 1).name(`${name} frames`).onFinishChange(queueRegenerate);
-}
-
-const spriteFolder = gui.addFolder('Sprite');
-spriteFolder.add(state.sprite, 'frameSize', FRAME_SIZES).onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'pixelsPerUnit', 6, 80, 0.5).name('pixels / unit').onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'elevation', 10, 70, 1).onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'anchorY', 0.5, 0.95, 0.01).name('ground anchor').onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'outline', OUTLINES).onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'coverage', 0.1, 0.9, 0.05).name('min coverage').onChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'supersample', SUPERSAMPLES).onChange(queueRegenerate);
-
-const lightFolder = gui.addFolder('Lighting');
-lightFolder.add(state.lighting, 'azimuth', -180, 180, 1).name('light from ← →').onChange(queueRegenerate);
-lightFolder.add(state.lighting, 'elevation', -30, 90, 1).name('light height').onChange(queueRegenerate);
-lightFolder.add(state.lighting, 'diffuse', 0, 1.5, 0.01).name('light strength').onChange(queueRegenerate);
-lightFolder.add(state.lighting, 'fill', 0, 0.8, 0.01).name('front fill').onChange(queueRegenerate);
-lightFolder.add(state.lighting, 'ambient', 0, 1, 0.01).onChange(queueRegenerate);
-state.sprite.thresholds.forEach((_, i) =>
-  lightFolder.add(state.sprite.thresholds, String(i) as '0', 0, 1, 0.01).name(`shade ${i}|${i + 1}`).onChange(queueRegenerate),
-);
-
-const viewFolder = gui.addFolder('View');
-viewFolder.add(view, 'spriteView').name('sprite camera');
-
-gui.add(state, 'team', TEAM_COLOR_NAMES).name('team color').onChange(applyTeam);
-gui.add(actions, 'export').name('💾 export PNG + JSON');
-gui.add(actions, 'exportAllTeams').name('💾 export all team colors');
-const SHARE_LABEL = '🔗 copy share link';
-const shareController = gui.add({ share: copyShareLink }, 'share').name(SHARE_LABEL);
 
 // --- main loop --------------------------------------------------------------
 

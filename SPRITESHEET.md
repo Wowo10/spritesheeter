@@ -217,7 +217,7 @@ function drawUnit(
 
 ## The effects sheet
 
-**💾 export effects** writes a second sheet of projectiles and hit effects: `<name>-effects-<team>.png` and `<name>-effects.json`. It has the same grid, JSON fields and palette as a unit sheet, so the same loading code reads it. Rows are effects instead of animations: `arrow`, `bolt`, `fireball`, `impact` and `puff`, in that order. The JSON's `magic` names the colour the spells were drawn in.
+**💾 export effects** writes a second sheet of projectiles and hit effects: `<name>-effects-<team>.png` and `<name>-effects.json`. It has the same grid, JSON fields and palette as a unit sheet, so the same loading code reads it. Rows are effects instead of animations: `arrow`, `bolt`, `fireball`, `impact`, `puff`, `stone` and `javelin`, in that order. The JSON's `magic` names the colour the spells were drawn in.
 
 Differences from a unit sheet:
 

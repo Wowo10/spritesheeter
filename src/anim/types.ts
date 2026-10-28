@@ -109,3 +109,29 @@ export interface BeastPose {
   /** Packs strapped over the back; hidden when absent. */
   load?: boolean;
 }
+
+/**
+ * A vehicle's pose. Rigid but for its moving parts: wheels, the weapon, a winch, a flag.
+ * The weapon's `stroke` means the same for every kind of weapon: 0 at rest (ram hanging,
+ * catapult arm cocked back, ballista drawn), 1 at the end of the blow or shot (ram swung
+ * forward, arm against its crossbar, bowstring straight), below 0 pulled back past rest.
+ */
+export interface VehiclePose {
+  /** How far every wheel has turned, in degrees; > 0 rolls forward. */
+  wheels: number;
+  /** The frame rocking on its axles: nose-up pitch and roll in degrees, and lift. */
+  rock?: [pitch: number, roll: number, lift: number];
+  /** Turn of the whole vehicle around the vertical axis, in degrees. */
+  turn?: number;
+  stroke: number;
+  /** The stone or javelin waiting to be shot; hidden once it's gone. */
+  loaded: boolean;
+  /** Turn of the winch that draws the weapon back, in degrees. */
+  winch?: number;
+  /** The flamethrower's fire: size (0 hides it, 1 a full burst) and a flicker phase in cycles. */
+  flame?: { scale: number; flicker: number };
+  /** Swing of the flag, in degrees. */
+  flag?: number;
+  /** 0-1: broken down, wheels off one side, the frame tipped onto the ground, the weapon slack. */
+  wreck?: number;
+}

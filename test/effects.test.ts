@@ -27,7 +27,7 @@ function pieces(o: Object3D): string[] {
 }
 
 describe('effects', () => {
-  it('has the five effects in a fixed order, timed for play', () => {
+  it('has the effects in a fixed order, timed for play', () => {
     expect(fx.defs.map((d) => d.name)).toEqual([...EFFECT_NAMES]);
     expect(fx.defs.map((d) => [d.frames, d.loop])).toEqual([
       [1, true],
@@ -35,6 +35,8 @@ describe('effects', () => {
       [4, true],
       [5, false],
       [5, false],
+      [4, true],
+      [1, true],
     ]);
   });
 
@@ -49,6 +51,8 @@ describe('effects', () => {
     expect(ramps(group('arrow'))).toEqual(new Set(['wood', 'steel', 'team']));
     for (const name of ['bolt', 'fireball', 'impact']) expect(ramps(group(name))).toEqual(new Set(['venom']));
     expect(ramps(group('puff'))).toEqual(new Set(['fur']));
+    expect(ramps(group('javelin'))).toEqual(new Set(['wood', 'steel', 'team']));
+    expect(ramps(group('stone'))).toEqual(new Set(['fur', 'dark']));
   });
 
   it('points the arrow along +Z, head first', () => {

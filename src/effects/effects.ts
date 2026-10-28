@@ -5,7 +5,7 @@ import type { RampName } from '../render/palette';
 import { PartBuilder } from '../unit/parts';
 
 // new effects go last: rows of sheets games already use must not shift
-export const EFFECT_NAMES = ['arrow', 'bolt', 'fireball', 'impact', 'puff'] as const;
+export const EFFECT_NAMES = ['arrow', 'bolt', 'fireball', 'impact', 'puff', 'stone', 'javelin'] as const;
 export type EffectName = (typeof EFFECT_NAMES)[number];
 
 /** One row of the effects sheet. */
@@ -31,7 +31,8 @@ export const FADED = 0.25;
 
 /**
  * Projectiles and hit effects drawn with the palette materials, so they render like units.
- * Spells (bolt, fireball, impact) are in `magic`; the arrow's fletching is team-coloured.
+ * Spells (bolt, fireball, impact) are in `magic`; the arrow's and javelin's fletching is
+ * team-coloured. Stones and javelins are what catapults and ballistas shoot.
  */
 export function buildEffects(mats: MaterialLibrary, magic: RampName): Effects {
   const b = new PartBuilder(mats);
@@ -53,6 +54,8 @@ export function buildEffects(mats: MaterialLibrary, magic: RampName): Effects {
   const fireball = buildFireball(b, groups.fireball, magic);
   const impact = buildImpact(b, groups.impact, magic);
   const puff = buildPuff(b, groups.puff);
+  const stone = buildStone(b, groups.stone);
+  const javelin = buildJavelin(b, groups.javelin);
 
   const def = (name: EffectName, frames: number, fps: number, loop: boolean, pose: (t: number) => number): EffectDef => ({
     name,
@@ -72,6 +75,8 @@ export function buildEffects(mats: MaterialLibrary, magic: RampName): Effects {
       def('fireball', 4, 10, true, fireball),
       def('impact', 5, 12, false, impact),
       def('puff', 5, 10, false, puff),
+      def('stone', 4, 10, true, stone),
+      def('javelin', 1, 1, true, javelin),
     ],
   };
 }
@@ -180,4 +185,29 @@ function buildPuff(b: PartBuilder, g: Group): (t: number) => number {
     });
     return keys(t, [[0, 1], [0.3, 0.9], [1, FADED]]);
   };
+}
+
+/**
+ * A lumpy boulder tumbling end over end. Its chips make it look the same only after a whole
+ * turn, which the loop takes.
+ */
+function buildStone(b: PartBuilder, g: Group): (t: number) => number {
+  const tumble = new Group();
+  g.add(tumble);
+  b.mesh(tumble, new IcosahedronGeometry(0.24, 0), 'fur');
+  b.mesh(tumble, new IcosahedronGeometry(0.13, 0), 'fur', [0.14, 0.1, 0.06]);
+  b.mesh(tumble, new IcosahedronGeometry(0.1, 0), 'dark', [-0.1, -0.14, 0.08]);
+  return (t) => {
+    tumble.rotation.x = 360 * t * DEG;
+    return 1;
+  };
+}
+
+/** A ballista's javelin: an arrow twice as long and thick, with an iron head. */
+function buildJavelin(b: PartBuilder, g: Group): (t: number) => number {
+  b.cylinder(g, 'wood', 0.05, 1.3, [0, 0, -0.05], [90, 0, 0], 6);
+  b.cone(g, 'steel', 0.15, 0.34, [0, 0, 0.77], [90, 0, 0]);
+  b.box(g, 'team', [0.32, 0.05, 0.3], [0, 0, -0.55]);
+  b.box(g, 'team', [0.05, 0.32, 0.3], [0, 0, -0.55]);
+  return () => 1;
 }

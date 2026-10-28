@@ -28,7 +28,7 @@ Drag the divider to resize the panels. Double-click it to reset.
 
 ### Unit
 
-Pick a **type**: `humanoid`, `beast` (four-legged animals, see [Beasts](#beasts)) or `mounted` (a humanoid riding a beast, see [Mounted units](#mounted-units)).
+Pick a **type**: `humanoid`, `beast` (four-legged animals, see [Beasts](#beasts)), `mounted` (a humanoid riding a beast, see [Mounted units](#mounted-units)) or `vehicle` (siege engines, see [Vehicles](#vehicles)).
 
 Pick a **preset** (swordsman, axeman, spearman, archer, knight, berserker, duelist, shieldbearer, worker, militia, mage, warlock, priest, shaman, guard, brute, ghost, zombie) or **🎲 randomize**. Typing a **seed** gives a repeatable random unit. You can then tweak:
 
@@ -85,6 +85,38 @@ The rider sits astride the saddle, knees out over the mount's flanks; on a low m
 
 A rider on its mount is far taller than a unit on foot, so switching to `mounted` raises the **frameSize** to 64 px. A wolf rider fits in 48 px.
 
+### Vehicles
+
+With **type** set to `vehicle`, the unit is a wheeled siege engine, without a crew. Presets: ram, catapult, ballista, flamethrower. **🎲 randomize** varies one of them. You can then tweak:
+
+- **weapon:** what the frame carries:
+  - `ram`: an iron-headed log hung on ropes from two A-frames
+  - `catapult`: a throwing arm on a torsion axle, its cup holding a stone, with a winch at the back
+  - `ballista`: a giant crossbow on a post, loaded with a javelin
+  - `flamethrower`: a tank with a pump lever and a nozzle ending in a beast's head
+- **Frame:** size, length and width, wheels per side (1–3) and their size
+- **roof:** a peaked roof of hides over the deck. Only the ram and flamethrower get one; it would be in the way of a throwing arm or a bow.
+- **banner:** a flag on a pole at a back corner
+- **Colours:** wood, metal, roof and flag (team by default), and the flamethrower's **flame color**
+
+Vehicles fill the same rows as units:
+
+| Row | Vehicle |
+|-----|---------|
+| `idle` | stands still, the flag stirring; a flamethrower keeps a pilot light burning |
+| `walk`, `carry` | rolls along, jolting, the wheels turning a quarter turn per loop |
+| `run` | rolls twice as fast |
+| `attack`, `cast` | fires: the ram swings back and strikes; the catapult's arm whips up against its crossbar and is winched back down; the ballista looses and is wound back; the flamethrower pumps out a burst of fire |
+| `channel` | a flamethrower pours out a steady stream; anything else stands ready |
+| `hit` | jolts and shudders |
+| `work` | stands still |
+| `taunt` | waves its flag; a flamethrower spurts fire |
+| `death` | breaks down: the wheels on one side give way and it tips onto the ground, the flag pole falling |
+
+The wheels have four spokes, so a quarter turn per loop repeats seamlessly. To keep them from skidding, move a walking vehicle about 0.4 of a wheel's height per loop.
+
+The stone and javelin a catapult or ballista shoots are on the [effects sheet](#effects). Vehicles are long, so switching to `vehicle` raises the **frameSize** to 64 px.
+
 ### Custom model
 
 Load a **.glb / .gltf / .fbx / .obj** with **📂 load**, or drag it onto the page. For a `.gltf`, pick or drop its `.bin` and textures along with it.
@@ -134,8 +166,10 @@ The **Effects** panel shows a second, small sheet of what units fire and leave b
 | `fireball` | a glowing ball with flames streaming behind (breath attacks) | 4, looping |
 | `impact` | the burst where a bolt or fireball hits | 5, plays once |
 | `puff` | a cloud of grey dust where a unit fell | 5, plays once |
+| `stone` | a boulder from a catapult, tumbling | 4, looping |
+| `javelin` | a ballista's javelin, team-coloured fletching | 1 |
 
-`bolt`, `fireball` and `impact` use the unit's **magic color**, so they match its cast effect. The effects sheet follows the **Sprite** and **Lighting** settings. It doesn't re-render when you change the unit's body, so tweaking a unit stays quick.
+`bolt`, `fireball` and `impact` use the unit's **magic color** (a vehicle's **flame color**), so they match its cast effect. The effects sheet follows the **Sprite** and **Lighting** settings. It doesn't re-render when you change the unit's body, so tweaking a unit stays quick.
 
 ## Undo
 
@@ -168,8 +202,8 @@ In short, columns are the directions `N, NE, E, SE, S`, and the west-facing ones
 ```
 src/
   main.ts              app wiring, GUI, export actions
-  unit/                procedural humanoid, beast and mounted unit: parameters, presets, body parts
-  anim/                humanoid, beast and mounted poses, animation definitions
+  unit/                procedural humanoid, beast, mounted unit and vehicle: parameters, presets, body parts
+  anim/                humanoid, beast, mounted and vehicle poses, animation definitions
   custom/              loading and posing imported models
   effects/             projectiles and hit effects for the effects sheet
   render/              palette, palette materials, sprite camera, pixel downsampling

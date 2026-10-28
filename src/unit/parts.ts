@@ -69,14 +69,15 @@ export function buildHelmet(b: PartBuilder, head: Object3D, kind: Helmet, fit: H
       buildHair(b, head, p.hairStyle, fit, p.hair, false);
       break;
     case 'cap':
-      b.dome(head, p.metal, s * 0.66, [0, cy + s * 0.08, 0]);
-      b.box(head, p.metal, [s * 0.14, s * 0.4, s * 0.06], [0, cy - s * 0.02, s * 0.52]); // nose guard
+      buildOpenHelm(b, head, fit, p);
+      b.box(head, p.metal, [s * 0.16, s * 0.42, s * 0.08], [0, cy - s * 0.04, s * 0.56]); // nose guard
       buildHair(b, head, p.hairStyle, fit, p.hair, true);
       break;
     case 'horned':
-      b.dome(head, p.metal, s * 0.66, [0, cy + s * 0.08, 0]);
+      buildOpenHelm(b, head, fit, p);
       for (const side of [1, -1]) {
-        b.cone(head, 'bone', s * 0.16, s * 0.6, [side * s * 0.62, cy + s * 0.42, 0], [0, 0, -side * 55]);
+        // base sunk into the band, tip sweeping up and out
+        b.cone(head, 'bone', s * 0.18, s * 0.7, [side * s * 0.86, cy + s * 0.62, 0], [0, 0, -side * 55]);
       }
       buildHair(b, head, p.hairStyle, fit, p.hair, true);
       break;
@@ -90,6 +91,22 @@ export function buildHelmet(b: PartBuilder, head: Object3D, kind: Helmet, fit: H
       b.box(head, p.cloth, [s * 0.7, s * 0.3, s * 0.5], [0, cy - s * 0.35, -s * 0.55], [-30, 0, 0]); // hood tail
       break;
   }
+}
+
+/** Octagonal radius that just clears the head box's vertical edges (its corners sit on the octagon's vertices). */
+const HELM_RADIUS = 0.74;
+
+/**
+ * Brow band plus a flattened dome. The band encloses the whole upper head box, so its
+ * corners can't poke through the way they do through a plain hemisphere.
+ */
+function buildOpenHelm(b: PartBuilder, head: Object3D, fit: HeadFit, p: UnitParams): void {
+  const s = fit.size;
+  const r = s * HELM_RADIUS;
+  const bottom = fit.centerY + s * 0.08; // just above the eyes
+  const top = fit.centerY + s * 0.55; // just above the head box
+  b.cylinder(head, p.metal, r, top - bottom, [0, (top + bottom) / 2, 0]);
+  b.dome(head, p.metal, r, [0, top, 0]).scale.y = 0.5;
 }
 
 /**
@@ -296,8 +313,8 @@ export function buildShield(
 ): void {
   const mount = new Object3D();
   mount.rotation.x = forearmPitchDeg * DEG;
-  // in front of the fist, so the hand never pokes through
-  mount.position.set(0.02 * outward, 0.04, 0.06);
+  // well clear of the fist (even a bulky one, turned by the mount), so the hand never pokes through
+  mount.position.set(0.02 * outward, -0.04, 0.06);
   hand.add(mount);
 
   if (kind === 'roundShield') {

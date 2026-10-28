@@ -110,6 +110,7 @@ The **Export** folder has a checkbox for each animation. Only the checked ones g
 
 - **💾 export PNG + JSON:** writes `<name>-<team>.png` in the selected **team color**, plus `<name>.json`.
 - **💾 export all team colors:** writes one PNG per team colour (red, blue, green, violet, orange, black, white, yellow) and a single JSON that lists them all.
+- **💾 export 3D model (.glb):** writes the procedural unit as `<name>-<team>.glb`, a binary glTF you can open in Blender, Godot, Unity and most 3D tools. Every animation is in it as a clip with the row's name (all of them, not just the checked ones), lasting as long as the row plays in the sheet and sampled at 30 keyframes a second. The unit is made of rigid parts on a node hierarchy rather than a skinned mesh, with one plain material per palette ramp in that ramp's colour. The team ramp gets the selected team colour, magic ramps glow and metal ramps are shiny. Parts that only show up sometimes, like the spell effect and the carried sack, are scaled to zero while hidden. The ground shadow is left out. See-through units get transparent materials, but the fade-outs in their death animations aren't carried over. A loaded custom model can't be exported this way; you already have its file.
 
 **See [SPRITESHEET.md](SPRITESHEET.md) for how to use the exported sheet in a game:** the grid layout, the JSON fields, direction mirroring, the ground anchor, animation playback and team colours.
 

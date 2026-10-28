@@ -4,7 +4,8 @@ import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, humanoidAnimations, type Animati
 import { frameTime } from './anim/types';
 import { loadModelFiles, MODEL_EXTENSIONS } from './custom/load';
 import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
-import { downloadJson, downloadPng, sheetToCanvas } from './export/download';
+import { downloadBinary, downloadJson, downloadPng, sheetToCanvas } from './export/download';
+import { exportGlb, rowDuration } from './export/model';
 import { packSheet, type AnimationFrames, type Sheet } from './export/packer';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
 import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
@@ -386,6 +387,21 @@ unitFolder
     rebindUnit();
     rebuild();
   });
+/**
+ * The procedural unit as a binary glTF in the selected team colour, with every animation as a
+ * clip (not just the checked ones), timed like the sheet. A loaded model already has a file.
+ */
+async function exportModel(): Promise<void> {
+  const subject = unit ?? beast;
+  if (state.source === 'model' || !subject) {
+    alert('Export model works on the procedural unit. Switch "show" to the procedural unit to export it.');
+    return;
+  }
+  const anims = playables.map((a) => ({ name: a.name, duration: rowDuration(a.frames, a.fps, a.loop), apply: a.apply }));
+  const glb = await exportGlb(subject.root, anims, { team: state.team, opacity: procedural().opacity });
+  downloadBinary(glb, `${exportName()}-${state.team}.glb`, 'model/gltf-binary');
+}
+
 const actions = {
   randomize() {
     randomize(Math.floor(Math.random() * 1e6));
@@ -394,6 +410,7 @@ const actions = {
   },
   export: exportSheet,
   exportAllTeams,
+  exportModel,
 };
 
 /** The seed of the generator in use, so one controller serves both. */
@@ -549,6 +566,7 @@ const exportFolder = restoreOpen(gui.addFolder('Export'));
 for (const name of ANIMATION_NAMES) exportFolder.add(state.exportAnims, name);
 exportFolder.add(actions, 'export').name('💾 export PNG + JSON');
 exportFolder.add(actions, 'exportAllTeams').name('💾 export all team colors');
+exportFolder.add(actions, 'exportModel').name('💾 export 3D model (.glb)');
 
 // --- custom model -------------------------------------------------------------
 

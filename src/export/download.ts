@@ -27,6 +27,10 @@ export function downloadPng(sheet: Sheet, filename: string, palette: RGB[] = PAL
   sheetToCanvas(sheet, palette).toBlob((blob) => blob && saveBlob(blob, filename), 'image/png');
 }
 
+export function downloadBinary(data: ArrayBuffer, filename: string, type = 'application/octet-stream'): void {
+  saveBlob(new Blob([data], { type }), filename);
+}
+
 export function downloadJson(data: unknown, filename: string): void {
   saveBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), filename);
 }

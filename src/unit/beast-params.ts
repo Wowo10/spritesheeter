@@ -4,8 +4,11 @@ import { HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, type RampName } from '../render/p
 export const EARS = ['none', 'pointed', 'floppy', 'round'] as const;
 /** horns: curving up from the brow; tusks: jutting up from the lower jaw. */
 export const HORNS = ['none', 'horns', 'tusks'] as const;
-/** mane: thick fur around the neck; spikes: a row of plates down the spine and tail; ridge: a crest of bristles. */
-export const BACKS = ['none', 'mane', 'spikes', 'ridge'] as const;
+/**
+ * mane: thick fur around the neck; spikes: a row of plates down the spine and tail; ridge: a
+ * crest of bristles; crest: a horse's mane along the top of the neck.
+ */
+export const BACKS = ['none', 'mane', 'spikes', 'ridge', 'crest'] as const;
 /** The team-coloured gear that tells whose beast it is. */
 export const BARDINGS = ['none', 'collar', 'saddle', 'armor'] as const;
 /** bat: leathery membrane between finger bones; feathered: bird wings with ragged flight feathers. */
@@ -279,6 +282,22 @@ export const BEAST_PRESETS: Record<string, BeastParams> = {
     magic: 'venom',
     glowEyes: true,
   },
+  horse: {
+    ...BASE,
+    size: 1.4,
+    bodyLength: 1.2,
+    bodyDepth: 1.1,
+    legLength: 1.4,
+    neckLength: 1.4,
+    snoutLength: 1.6,
+    tailLength: 0.9,
+    tailThickness: 0.9,
+    back: 'crest',
+    barding: 'saddle',
+    hide: 'leather',
+    belly: 'leather',
+    accent: 'dark',
+  },
   rat: {
     ...BASE,
     size: 0.75,
@@ -379,11 +398,12 @@ export const BEAST_PRESETS: Record<string, BeastParams> = {
 };
 
 /** Rough body plans that random beasts are varied from. */
-const ARCHETYPES = ['wolf', 'hound', 'bear', 'boar', 'lion', 'rat', 'crocodile', 'lizard'];
+const ARCHETYPES = ['wolf', 'hound', 'bear', 'boar', 'lion', 'rat', 'crocodile', 'lizard', 'horse'];
 
-export function randomBeast(seed: number): BeastParams {
+/** A random beast varied from one of `archetypes` (preset names). */
+export function randomBeast(seed: number, archetypes: readonly string[] = ARCHETYPES): BeastParams {
   const rng = mulberry32(seed);
-  const base = BEAST_PRESETS[pick(rng, ARCHETYPES)];
+  const base = BEAST_PRESETS[pick(rng, archetypes)];
   const vary = (v: number, by = 0.15) => round2(v * range(rng, 1 - by, 1 + by));
   const magic = rng() < 0.2;
   return {

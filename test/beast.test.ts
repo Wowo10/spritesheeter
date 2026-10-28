@@ -10,6 +10,9 @@ const mats = new MaterialLibrary();
 const anims = beastAnimations();
 const anim = (name: string) => anims.find((a) => a.name === name)!;
 
+/** Presets too big for a 32 px frame. */
+const LARGE = ['horse'];
+
 /** World-space bounds of what's drawn of a beast in the given pose (the spell may be hidden), shadow aside. */
 function bounds(p: BeastParams, name: string, t: number): Box3 {
   const b = buildBeast(p, mats);
@@ -34,10 +37,12 @@ describe('beast presets', () => {
       else expect(bounds(p, 'idle', 0).min.y).toBeCloseTo(0, 1);
     });
 
-    it(`${name} fits a 32 px frame side-on`, () => {
-      // 32 px at 14 px per unit
+    // horses are for riding, and a rider needs 48 px frames anyway
+    const frame = LARGE.includes(name) ? 48 : 32;
+    it(`${name} fits a ${frame} px frame side-on`, () => {
+      // at 14 px per unit
       const box = bounds(p, 'idle', 0);
-      expect(box.max.z - box.min.z).toBeLessThan(32 / 14);
+      expect(box.max.z - box.min.z).toBeLessThan(frame / 14);
     });
 
     it(`${name} poses are finite in every animation`, () => {

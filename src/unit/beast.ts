@@ -18,6 +18,8 @@ export interface Beast {
   fx: Group;
   /** Packs over the back; hidden unless a pose shows them. */
   load: Group;
+  /** Empty mount point on top of the back where a rider sits, following the pelvis. */
+  saddle: Group;
   shadow: Mesh | null;
 }
 
@@ -134,6 +136,12 @@ export function buildBeast(p: BeastParams, mats: MaterialLibrary): Beast {
   buildBarding(b, joints, p, d, topY, neckT);
   const load = buildPacks(b, joints.pelvis, d, topY);
 
+  // on top of the saddle's seat, where the body's two halves meet
+  const saddle = new Group();
+  saddle.name = 'saddle';
+  saddle.position.set(0, topY + D * 0.12, L * 0.45);
+  pelvis.add(saddle);
+
   let shadow: Mesh | null = null;
   if (p.shadow) {
     shadow = b.mesh(root, new CylinderGeometry(W * 0.9, W * 0.9, 0.01, 12), 'dark', [0, 0.005, 0]);
@@ -142,7 +150,7 @@ export function buildBeast(p: BeastParams, mats: MaterialLibrary): Beast {
     shadow.userData.length = Math.max(1, (L + d.neck + h) / (W * 1.8));
   }
 
-  return { root, body, joints, hipHeight, fx, load, shadow };
+  return { root, body, joints, hipHeight, fx, load, saddle, shadow };
 }
 
 function buildEars(b: PartBuilder, head: Object3D, p: BeastParams, h: number): void {
@@ -198,6 +206,11 @@ function buildBack(b: PartBuilder, j: Record<BeastJoint, Group>, p: BeastParams,
       b.box(j.pelvis, p.accent, [W * 0.18, D * 0.22, L * 0.6], [0, topY + D * 0.05, L * 0.2]);
       b.box(j.chest, p.accent, [W * 0.2, D * 0.3, L * 0.6], [0, topY + D * 0.08, L * 0.2]);
       b.box(j.neck, p.accent, [neckT * 0.3, neckT * 0.4, d.neck + neckT * 0.4], [0, neckT * 0.6, d.neck / 2]);
+      break;
+    case 'crest':
+      // a horse's mane: along the top of the neck only, leaving the back free for a rider, and a forelock
+      b.box(j.neck, p.accent, [neckT * 0.4, neckT * 0.6, d.neck + neckT * 0.5], [0, neckT * 0.55, d.neck / 2 - neckT * 0.1]);
+      b.box(j.head, p.accent, [h * 0.32, h * 0.3, h * 0.3], [0, h * 0.48, h * 0.15]);
       break;
   }
 }

@@ -1,5 +1,6 @@
 import GUI, { type Controller } from 'lil-gui';
 import { beastAnimations } from './anim/beast-anims';
+import { mountedAnimations } from './anim/mounted-anims';
 import { buildEffects, disposeEffects, type Effects } from './effects/effects';
 import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, humanoidAnimations, type AnimationName } from './anim/humanoid-anims';
 import { frameTime } from './anim/types';
@@ -16,6 +17,7 @@ import { UndoHistory } from './history';
 import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
 import { applyBeastPose, buildBeast, disposeBeast, type Beast } from './unit/beast';
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
+import { applyMountedPose, buildMounted, copyMounted, disposeMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, randomMounted, type Mounted, type MountedParams } from './unit/mounted';
 import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
 import { ARMORS, BODIES, CAPES, GAITS, HAIR_STYLES, HAND_ITEMS, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
 import { Preview3D } from './ui/preview3d';
@@ -46,7 +48,7 @@ interface Playable {
   apply: (t: number) => number | void;
 }
 
-const KINDS = ['humanoid', 'beast'] as const;
+const KINDS = ['humanoid', 'beast', 'mounted'] as const;
 type Kind = (typeof KINDS)[number];
 
 const state = {
@@ -55,6 +57,7 @@ const state = {
   preset: 'swordsman',
   unit: { ...PRESETS.swordsman } as UnitParams,
   beast: { ...BEAST_PRESETS.wolf } as BeastParams,
+  mounted: copyMounted(MOUNTED_PRESETS.knight),
   frames: { ...DEFAULT_FRAME_COUNTS },
   sprite: { ...DEFAULT_SPRITE_SETTINGS, thresholds: [...DEFAULT_SPRITE_SETTINGS.thresholds] } as SpriteSettings,
   lighting: {
@@ -83,26 +86,37 @@ const state = {
 // --- share links ------------------------------------------------------------
 
 /** Values a shared link may set for fields that take one of a set; see mergeSettings. */
+const UNIT_CHOICES: Record<string, readonly unknown[]> = {
+  helmet: HELMETS,
+  armor: ARMORS,
+  rightHand: HAND_ITEMS,
+  leftHand: HAND_ITEMS,
+  hairStyle: HAIR_STYLES,
+  cape: CAPES,
+  gait: GAITS,
+  body: BODIES,
+  ...Object.fromEntries(['skin', 'cloth', 'metal', 'hair', 'magic', 'capeColor'].map((k) => [k, RAMP_NAMES])),
+};
+const BEAST_CHOICES: Record<string, readonly unknown[]> = {
+  ears: EARS,
+  horns: HORNS,
+  back: BACKS,
+  barding: BARDINGS,
+  wings: WINGS,
+  ...Object.fromEntries(['hide', 'belly', 'accent', 'metal', 'magic', 'wingColor'].map((k) => [k, RAMP_NAMES])),
+};
+const prefixed = (prefix: string, choices: Record<string, readonly unknown[]>) =>
+  Object.fromEntries(Object.entries(choices).map(([k, v]) => [prefix + k, v]));
+
 const SHARE_CHOICES: Record<string, readonly unknown[]> = {
   kind: KINDS,
-  preset: [...Object.keys(PRESETS), ...Object.keys(BEAST_PRESETS), 'random'],
+  preset: [...Object.keys(PRESETS), ...Object.keys(BEAST_PRESETS), ...Object.keys(MOUNTED_PRESETS), 'random'],
   previewAnim: ANIMATION_NAMES,
   team: TEAM_COLOR_NAMES,
-  'unit.helmet': HELMETS,
-  'unit.armor': ARMORS,
-  'unit.rightHand': HAND_ITEMS,
-  'unit.leftHand': HAND_ITEMS,
-  'unit.hairStyle': HAIR_STYLES,
-  'unit.cape': CAPES,
-  'unit.gait': GAITS,
-  'unit.body': BODIES,
-  ...Object.fromEntries(['skin', 'cloth', 'metal', 'hair', 'magic', 'capeColor'].map((k) => [`unit.${k}`, RAMP_NAMES])),
-  'beast.ears': EARS,
-  'beast.horns': HORNS,
-  'beast.back': BACKS,
-  'beast.barding': BARDINGS,
-  'beast.wings': WINGS,
-  ...Object.fromEntries(['hide', 'belly', 'accent', 'metal', 'magic', 'wingColor'].map((k) => [`beast.${k}`, RAMP_NAMES])),
+  ...prefixed('unit.', UNIT_CHOICES),
+  ...prefixed('beast.', BEAST_CHOICES),
+  ...prefixed('mounted.rider.', UNIT_CHOICES),
+  ...prefixed('mounted.mount.', BEAST_CHOICES),
   'sprite.frameSize': FRAME_SIZES,
   'sprite.outline': OUTLINES,
   'sprite.supersample': SUPERSAMPLES,
@@ -113,8 +127,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
  * stays behind, since its file can't travel in a URL. The objects are state's own.
  */
 function sharedSettings() {
-  const { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team } = state;
-  return { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team };
+  const { kind, preset, unit, beast, mounted, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team } = state;
+  return { kind, preset, unit, beast, mounted, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team };
 }
 
 /** Applies the settings of a share link the page was opened from, before the GUI is built. */
@@ -157,6 +171,7 @@ const side = document.getElementById('side')!;
 
 let unit: Humanoid | null = null;
 let beast: Beast | null = null;
+let mounted: Mounted | null = null;
 let custom: CustomModel | null = null;
 let playables: Playable[] = [];
 let rendered: AnimationFrames[] = [];
@@ -165,14 +180,19 @@ let sheet: Sheet | null = null;
 function rebuild(): void {
   if (unit) disposeHumanoid(unit);
   if (beast) disposeBeast(beast);
+  if (mounted) disposeMounted(mounted);
   unit = null;
   beast = null;
+  mounted = null;
   custom?.root.removeFromParent();
   if (state.source === 'model' && custom) {
     view.scene.add(custom.root);
   } else if (state.kind === 'beast') {
     beast = buildBeast(state.beast, mats);
     view.scene.add(beast.root);
+  } else if (state.kind === 'mounted') {
+    mounted = buildMounted(state.mounted, mats);
+    view.scene.add(mounted.root);
   } else {
     unit = buildHumanoid(state.unit, mats);
     view.scene.add(unit.root);
@@ -205,6 +225,17 @@ function sheetRows(): Playable[] {
       },
     }));
   }
+  const m2 = mounted;
+  if (m2) {
+    return mountedAnimations(state.frames).map((d) => ({
+      ...d,
+      apply: (t: number) => {
+        const pose = d.pose(t, state.mounted, 0);
+        applyMountedPose(m2, pose);
+        return pose.opacity;
+      },
+    }));
+  }
   const u = unit!;
   return defs.map((d) => ({
     ...d,
@@ -217,7 +248,7 @@ function sheetRows(): Playable[] {
 }
 
 function regenerate(): void {
-  const root = state.source === 'model' ? custom?.root : (unit ?? beast)?.root;
+  const root = state.source === 'model' ? custom?.root : (unit ?? beast ?? mounted)?.root;
   if (!root) return;
   mats.setLighting({ ...state.lighting, thresholds: state.sprite.thresholds });
   sprites.configureCamera(view.ortho, state.sprite);
@@ -251,7 +282,7 @@ let effectsKey = '';
  * is the projectile's position), at the unit's scale and with its sprite and lighting settings.
  */
 function renderEffects(): void {
-  const magic = procedural().magic;
+  const magic = magicColor();
   const key = JSON.stringify({ magic, sprite: state.sprite, lighting: state.lighting });
   if (key === effectsKey) return;
   effectsKey = key;
@@ -318,7 +349,7 @@ function exportName(): string {
 
 /** What the sheet was made from, for the JSON. */
 function exportSource(): Record<string, unknown> {
-  if (state.source !== 'model' || !custom) return state.kind === 'beast' ? { beast: state.beast } : { unit: state.unit };
+  if (state.source !== 'model' || !custom) return { [state.kind === 'humanoid' ? 'unit' : state.kind]: procedural() };
   return {
     model: {
       file: custom.name,
@@ -411,33 +442,50 @@ for (const g of [gui, tools]) {
 const addTeamController = (folder: GUI) => folder.add(state, 'team', TEAM_COLOR_NAMES).name('team color').onChange(applyTeam);
 
 /** The settings of the procedural generator in use. */
-function procedural(): UnitParams | BeastParams {
-  return state.kind === 'beast' ? state.beast : state.unit;
+function procedural(): UnitParams | BeastParams | MountedParams {
+  return state.kind === 'beast' ? state.beast : state.kind === 'mounted' ? state.mounted : state.unit;
 }
 
-const presetNames = (kind: Kind) => Object.keys(kind === 'beast' ? BEAST_PRESETS : PRESETS);
+/** The spell colour of the procedural unit; a mounted unit's rider casts. */
+function magicColor(): RampName {
+  return state.kind === 'mounted' ? state.mounted.rider.magic : (procedural() as UnitParams | BeastParams).magic;
+}
+
+/** The procedural unit's opacity; a mounted unit's is its mount's. */
+function unitOpacity(): number {
+  return state.kind === 'mounted' ? state.mounted.mount.opacity : (procedural() as UnitParams | BeastParams).opacity;
+}
+
+const PRESETS_OF: Record<Kind, Record<string, unknown>> = { humanoid: PRESETS, beast: BEAST_PRESETS, mounted: MOUNTED_PRESETS };
+const presetNames = (kind: Kind) => Object.keys(PRESETS_OF[kind]);
 
 function applyPreset(name: string): void {
   if (state.kind === 'beast') state.beast = { ...BEAST_PRESETS[name], seed: state.beast.seed };
+  else if (state.kind === 'mounted') state.mounted = { ...copyMounted(MOUNTED_PRESETS[name]), seed: state.mounted.seed };
   else state.unit = { ...PRESETS[name], seed: state.unit.seed };
 }
 
 function randomize(seed: number): void {
   state.preset = 'random';
   if (state.kind === 'beast') state.beast = randomBeast(seed);
+  else if (state.kind === 'mounted') state.mounted = randomMounted(seed);
   else state.unit = randomUnit(seed);
 }
 
 /** The preset last picked for each type, so switching back and forth keeps its name. */
-const lastPreset: Record<Kind, string> = { humanoid: 'swordsman', beast: 'wolf', [state.kind]: state.preset };
+const lastPreset: Record<Kind, string> = { humanoid: 'swordsman', beast: 'wolf', mounted: 'knight', [state.kind]: state.preset };
+/** The type whose settings the Unit folder shows. */
+let shownKind: Kind = state.kind;
 
 const unitFolder = restoreOpen(gui.addFolder('Unit'));
 unitFolder
   .add(state, 'kind', KINDS)
   .name('type')
   .onChange((kind: Kind) => {
-    lastPreset[kind === 'beast' ? 'humanoid' : 'beast'] = state.preset;
+    lastPreset[shownKind] = state.preset;
     state.preset = lastPreset[kind];
+    // a rider on its mount (or flying on it) is well over twice as tall as a unit on foot
+    if (kind === 'mounted' && state.sprite.frameSize < 64) state.sprite.frameSize = 64;
     rebindUnit();
     rebuild();
   });
@@ -446,13 +494,13 @@ unitFolder
  * clip (not just the checked ones), timed like the sheet. A loaded model already has a file.
  */
 async function exportModel(): Promise<void> {
-  const subject = unit ?? beast;
+  const subject = unit ?? beast ?? mounted;
   if (state.source === 'model' || !subject) {
     alert('Export model works on the procedural unit. Switch "show" to the procedural unit to export it.');
     return;
   }
   const anims = playables.map((a) => ({ name: a.name, duration: rowDuration(a.frames, a.fps, a.loop), apply: a.apply }));
-  const glb = await exportGlb(subject.root, anims, { team: state.team, opacity: procedural().opacity });
+  const glb = await exportGlb(subject.root, anims, { team: state.team, opacity: unitOpacity() });
   downloadBinary(glb, `${exportName()}-${state.team}.glb`, 'model/gltf-binary');
 }
 
@@ -465,7 +513,7 @@ function exportEffects(): void {
   const fields = imageFields(name);
   void downloadPng(s, image, teamPalette(state.team));
   if (fields.teamMask) setTimeout(() => void downloadTeamMask(s, fields.teamMask as string), 250);
-  downloadJson({ ...s.meta, image, imageTeam: state.team, ...fields, magic: procedural().magic }, `${name}.json`);
+  downloadJson({ ...s.meta, image, imageTeam: state.team, ...fields, magic: magicColor() }, `${name}.json`);
 }
 
 const actions = {
@@ -494,91 +542,140 @@ const seedOf = {
  * A bow takes both hands: picking one empties the other hand, and picking
  * anything for the other hand puts the bow away.
  */
-function onHandChange(key: 'rightHand' | 'leftHand', item: HandItem): void {
+function onHandChange(u: UnitParams, key: 'rightHand' | 'leftHand', item: HandItem): void {
   const other = key === 'rightHand' ? 'leftHand' : 'rightHand';
-  if (item === 'bow' || (item !== 'none' && state.unit[other] === 'bow')) {
-    state.unit[other] = 'none';
+  if (item === 'bow' || (item !== 'none' && u[other] === 'bow')) {
+    u[other] = 'none';
     refreshGui();
   }
   rebuild();
 }
 
-function humanoidControllers(u: UnitParams): Controller[] {
+/** A humanoid's controls in `folder`; a rider leaves out gait, body, opacity and shadow, which riding fixes. */
+function humanoidControllers(u: UnitParams, folder: GUI, rider = false): Controller[] {
   const hand = (key: 'rightHand' | 'leftHand', label: string) =>
-    unitFolder.add(u, key, HAND_ITEMS).name(label).onChange((item: HandItem) => onHandChange(key, item));
+    folder.add(u, key, HAND_ITEMS).name(label).onChange((item: HandItem) => onHandChange(u, key, item));
   const plain: Controller[] = [
-    unitFolder.add(u, 'height', 0.8, 1.25, 0.01),
-    unitFolder.add(u, 'bulk', 0.75, 1.45, 0.01),
-    unitFolder.add(u, 'headSize', 0.7, 1.5, 0.01).name('head size'),
-    unitFolder.add(u, 'torsoLength', 0.75, 1.3, 0.01).name('torso length'),
-    unitFolder.add(u, 'shoulderWidth', 0.75, 1.4, 0.01).name('shoulder width'),
-    unitFolder.add(u, 'armLength', 0.75, 1.3, 0.01).name('arm length'),
-    unitFolder.add(u, 'armThickness', 0.7, 1.5, 0.01).name('arm thickness'),
-    unitFolder.add(u, 'legLength', 0.75, 1.3, 0.01).name('leg length'),
-    unitFolder.add(u, 'helmet', HELMETS),
-    unitFolder.add(u, 'hairStyle', HAIR_STYLES).name('hair style'),
-    unitFolder.add(u, 'armor', ARMORS),
+    folder.add(u, 'height', 0.8, 1.25, 0.01),
+    folder.add(u, 'bulk', 0.75, 1.45, 0.01),
+    folder.add(u, 'headSize', 0.7, 1.5, 0.01).name('head size'),
+    folder.add(u, 'torsoLength', 0.75, 1.3, 0.01).name('torso length'),
+    folder.add(u, 'shoulderWidth', 0.75, 1.4, 0.01).name('shoulder width'),
+    folder.add(u, 'armLength', 0.75, 1.3, 0.01).name('arm length'),
+    folder.add(u, 'armThickness', 0.7, 1.5, 0.01).name('arm thickness'),
+    folder.add(u, 'legLength', 0.75, 1.3, 0.01).name('leg length'),
+    folder.add(u, 'helmet', HELMETS),
+    folder.add(u, 'hairStyle', HAIR_STYLES).name('hair style'),
+    folder.add(u, 'armor', ARMORS),
   ];
   const hands = [hand('rightHand', 'right hand'), hand('leftHand', 'left hand')];
   const colors = [
-    unitFolder.add(u, 'skin', [...SKIN_RAMPS, ...UNDEAD_SKIN_RAMPS]),
-    unitFolder.add(u, 'cloth', [...CLOTH_RAMPS, 'ghost']),
-    unitFolder.add(u, 'metal', METAL_RAMPS),
-    unitFolder.add(u, 'hair', RAMP_NAMES).name('hair color'),
-    unitFolder.add(u, 'magic', MAGIC_RAMPS).name('magic color'),
-    unitFolder.add(u, 'cape', CAPES),
-    unitFolder.add(u, 'capeColor', CLOTH_RAMPS).name('cape color'),
+    folder.add(u, 'skin', [...SKIN_RAMPS, ...UNDEAD_SKIN_RAMPS]),
+    folder.add(u, 'cloth', [...CLOTH_RAMPS, 'ghost']),
+    folder.add(u, 'metal', METAL_RAMPS),
+    folder.add(u, 'hair', RAMP_NAMES).name('hair color'),
+    folder.add(u, 'magic', MAGIC_RAMPS).name('magic color'),
+    folder.add(u, 'cape', CAPES),
+    folder.add(u, 'capeColor', CLOTH_RAMPS).name('cape color'),
   ];
-  const spooky = [
-    unitFolder.add(u, 'gait', GAITS),
-    unitFolder.add(u, 'body', BODIES),
-    unitFolder.add(u, 'opacity', 0.25, 1, 0.25),
-    unitFolder.add(u, 'glowEyes').name('glowing eyes'),
-    unitFolder.add(u, 'shadow').name('ground shadow'),
-  ];
+  const spooky = rider
+    ? [folder.add(u, 'glowEyes').name('glowing eyes')]
+    : [
+        folder.add(u, 'gait', GAITS),
+        folder.add(u, 'body', BODIES),
+        folder.add(u, 'opacity', 0.25, 1, 0.25),
+        folder.add(u, 'glowEyes').name('glowing eyes'),
+        folder.add(u, 'shadow').name('ground shadow'),
+      ];
   [...plain, ...colors, ...spooky].forEach((c) => c.onFinishChange(rebuild));
   return [...plain, ...hands, ...colors, ...spooky];
 }
 
-function beastControllers(b: BeastParams): Controller[] {
+/** A beast's controls in `folder`; a mount always wears a seat, so its barding is a saddle or armour. */
+function beastControllers(b: BeastParams, folder: GUI, mount = false): Controller[] {
   const controllers = [
-    unitFolder.add(b, 'size', 0.6, 1.5, 0.01),
-    unitFolder.add(b, 'bulk', 0.7, 1.6, 0.01),
-    unitFolder.add(b, 'bodyLength', 0.6, 1.5, 0.01).name('body length'),
-    unitFolder.add(b, 'bodyDepth', 0.5, 1.4, 0.01).name('body depth'),
-    unitFolder.add(b, 'legLength', 0.4, 1.4, 0.01).name('leg length'),
-    unitFolder.add(b, 'sprawl', 0, 1, 0.05),
-    unitFolder.add(b, 'neckLength', 0, 1.6, 0.01).name('neck length'),
-    unitFolder.add(b, 'headSize', 0.7, 1.5, 0.01).name('head size'),
-    unitFolder.add(b, 'snoutLength', 0.4, 2.2, 0.01).name('snout length'),
-    unitFolder.add(b, 'beak'),
-    unitFolder.add(b, 'tailLength', 0, 1.6, 0.01).name('tail length'),
-    unitFolder.add(b, 'tailThickness', 0.3, 1.6, 0.01).name('tail thickness'),
-    unitFolder.add(b, 'ears', EARS),
-    unitFolder.add(b, 'horns', HORNS),
-    unitFolder.add(b, 'back', BACKS),
-    unitFolder.add(b, 'barding', BARDINGS),
-    unitFolder.add(b, 'wings', WINGS),
-    unitFolder.add(b, 'wingSize', 0.6, 1.4, 0.01).name('wing size'),
-    unitFolder.add(b, 'wingColor', HIDE_RAMPS).name('wing color'),
-    unitFolder.add(b, 'flying'),
-    unitFolder.add(b, 'hide', HIDE_RAMPS),
-    unitFolder.add(b, 'belly', HIDE_RAMPS),
-    unitFolder.add(b, 'accent', HIDE_RAMPS).name('mane / spikes'),
-    unitFolder.add(b, 'metal', METAL_RAMPS),
-    unitFolder.add(b, 'magic', MAGIC_RAMPS).name('magic color'),
-    unitFolder.add(b, 'breath').name('magic breath'),
-    unitFolder.add(b, 'opacity', 0.25, 1, 0.25),
-    unitFolder.add(b, 'glowEyes').name('glowing eyes'),
-    unitFolder.add(b, 'shadow').name('ground shadow'),
+    folder.add(b, 'size', 0.6, 1.5, 0.01),
+    folder.add(b, 'bulk', 0.7, 1.6, 0.01),
+    folder.add(b, 'bodyLength', 0.6, 1.5, 0.01).name('body length'),
+    folder.add(b, 'bodyDepth', 0.5, 1.4, 0.01).name('body depth'),
+    folder.add(b, 'legLength', 0.4, 1.4, 0.01).name('leg length'),
+    folder.add(b, 'sprawl', 0, 1, 0.05),
+    folder.add(b, 'neckLength', 0, 1.6, 0.01).name('neck length'),
+    folder.add(b, 'headSize', 0.7, 1.5, 0.01).name('head size'),
+    folder.add(b, 'snoutLength', 0.4, 2.2, 0.01).name('snout length'),
+    folder.add(b, 'beak'),
+    folder.add(b, 'tailLength', 0, 1.6, 0.01).name('tail length'),
+    folder.add(b, 'tailThickness', 0.3, 1.6, 0.01).name('tail thickness'),
+    folder.add(b, 'ears', EARS),
+    folder.add(b, 'horns', HORNS),
+    folder.add(b, 'back', BACKS),
+    folder.add(b, 'barding', mount ? MOUNT_BARDINGS : BARDINGS),
+    folder.add(b, 'wings', WINGS),
+    folder.add(b, 'wingSize', 0.6, 1.4, 0.01).name('wing size'),
+    folder.add(b, 'wingColor', HIDE_RAMPS).name('wing color'),
+    folder.add(b, 'flying'),
+    folder.add(b, 'hide', HIDE_RAMPS),
+    folder.add(b, 'belly', HIDE_RAMPS),
+    folder.add(b, 'accent', HIDE_RAMPS).name('mane / spikes'),
+    folder.add(b, 'metal', METAL_RAMPS),
+    folder.add(b, 'magic', MAGIC_RAMPS).name('magic color'),
+    folder.add(b, 'breath').name('magic breath'),
+    folder.add(b, 'opacity', 0.25, 1, 0.25),
+    folder.add(b, 'glowEyes').name('glowing eyes'),
+    folder.add(b, 'shadow').name('ground shadow'),
   ];
   controllers.forEach((c) => c.onFinishChange(rebuild));
   return controllers;
 }
 
+/** The preset among `presets` that `params` were made from, if they haven't been changed since. */
+function presetOf(params: object, presets: Record<string, object>): string | undefined {
+  const { seed: _, ...p } = params as { seed: number };
+  return Object.keys(presets).find((name) => {
+    const { seed: __, ...q } = presets[name] as { seed: number };
+    return JSON.stringify(p) === JSON.stringify(q);
+  });
+}
+
+/**
+ * A mounted unit's Rider and Mount folders: each starts with a preset to copy from any
+ * humanoid or beast preset, then that rig's own controls.
+ */
+function mountedFolders(m: MountedParams): GUI[] {
+  const riderFolder = restoreOpen(unitFolder.addFolder('Rider'));
+  riderFolder
+    .add({ preset: presetOf(m.rider, PRESETS) }, 'preset', Object.keys(PRESETS))
+    .name('rider preset')
+    .onChange((name: string) => {
+      m.rider = { ...PRESETS[name], seed: m.rider.seed };
+      setTimeout(rebindUnit);
+      rebuild();
+    });
+  humanoidControllers(m.rider, riderFolder, true);
+
+  const mountFolder = restoreOpen(unitFolder.addFolder('Mount'));
+  // made to wear a seat here, so it reads as that preset in the dropdown afterwards
+  const asMount = (b: BeastParams): BeastParams => ({ ...b, barding: MOUNT_BARDINGS.includes(b.barding) ? b.barding : 'saddle' });
+  const mountPresets = Object.fromEntries(Object.entries(BEAST_PRESETS).map(([k, b]) => [k, asMount(b)]));
+  mountFolder
+    .add({ preset: presetOf(m.mount, mountPresets) }, 'preset', Object.keys(BEAST_PRESETS))
+    .name('mount preset')
+    .onChange((name: string) => {
+      m.mount = { ...mountPresets[name], seed: m.mount.seed };
+      setTimeout(rebindUnit);
+      rebuild();
+    });
+  beastControllers(m.mount, mountFolder, true);
+  return [riderFolder, mountFolder];
+}
+
 let unitControllers: Controller[] = [];
+let unitFolders: GUI[] = [];
 function rebindUnit(): void {
   unitControllers.forEach((c) => c.destroy());
+  unitFolders.forEach((f) => f.destroy());
+  unitFolders = [];
+  shownKind = state.kind;
   // rebinding destroys the very controller whose callback triggered it, so leave that first
   const preset = unitFolder.add(state, 'preset', presetNames(state.kind)).onChange((name: string) => {
     applyPreset(name);
@@ -586,7 +683,10 @@ function rebindUnit(): void {
     rebuild();
   });
   const team = addTeamController(unitFolder);
-  const params = state.kind === 'beast' ? beastControllers(state.beast) : humanoidControllers(state.unit);
+  let params: Controller[] = [];
+  if (state.kind === 'beast') params = beastControllers(state.beast, unitFolder);
+  else if (state.kind === 'mounted') unitFolders = mountedFolders(state.mounted);
+  else params = humanoidControllers(state.unit, unitFolder);
   unitControllers = [preset, team, ...params];
   refreshGui();
 }
@@ -786,6 +886,7 @@ function restoreSettings(text: string): void {
   // their controllers stay bound
   state.unit = saved.unit;
   state.beast = saved.beast;
+  state.mounted = saved.mounted;
   const shared = sharedSettings();
   mergeSettings(shared, saved, SHARE_CHOICES);
   Object.assign(state, shared);

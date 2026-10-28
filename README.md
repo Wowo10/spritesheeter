@@ -28,7 +28,7 @@ Drag the divider to resize the panels. Double-click it to reset.
 
 ### Unit
 
-Pick a **type**: `humanoid` or `beast` (four-legged animals, see [Beasts](#beasts)).
+Pick a **type**: `humanoid`, `beast` (four-legged animals, see [Beasts](#beasts)) or `mounted` (a humanoid riding a beast, see [Mounted units](#mounted-units)).
 
 Pick a **preset** (swordsman, axeman, spearman, archer, knight, berserker, duelist, shieldbearer, worker, militia, mage, warlock, priest, shaman, guard, brute, ghost, zombie) or **🎲 randomize**. Typing a **seed** gives a repeatable random unit. You can then tweak:
 
@@ -44,11 +44,11 @@ Pick a **preset** (swordsman, axeman, spearman, archer, knight, berserker, dueli
 
 ### Beasts
 
-With **type** set to `beast`, the unit is a four-legged animal. Presets: wolf, hound, warhound, hellhound, ghostWolf, bear, boar, lion, panther, rat, crocodile, lizard, dragon, griffin, salamander. **🎲 randomize** varies one of the basic body plans. You can then tweak:
+With **type** set to `beast`, the unit is a four-legged animal. Presets: wolf, hound, warhound, hellhound, ghostWolf, bear, boar, lion, panther, horse, rat, crocodile, lizard, dragon, griffin, salamander. **🎲 randomize** varies one of the basic body plans. You can then tweak:
 
 - **Body:** size, bulk, body length and depth, leg length, neck, head, snout (or a hooked **beak**) and tail
 - **sprawl:** `0` puts the legs straight under the body (dogs, bears); `1` splays them out to the sides (lizards, crocodiles). Sprawled beasts swing their body side to side as they walk, and roll onto their backs when they die.
-- **Features:** ears (pointed, floppy, round), horns or tusks, and a back of mane, spikes or a bristly ridge
+- **Features:** ears (pointed, floppy, round), horns or tusks, and a back of mane, spikes, a bristly ridge, or a horse's crest along the neck
 - **barding:** the team-coloured gear that shows whose beast it is: a collar, a saddle cloth, or armour plates over a team-coloured skirt
 - **wings:** `bat` (membrane between finger bones) or `feathered`, with their size and colour. Grounded beasts keep them folded along their sides and spread them to bite, roar and snarl.
 - **flying:** with wings, the beast stays in the air the whole time, flapping once per loop, its legs tucked up and its tail streaming behind. It drops to the ground when it dies. Turn on **ground shadow** so it reads as airborne. Spread wings are wide, so flying beasts look best at 48 px or larger.
@@ -57,6 +57,33 @@ With **type** set to `beast`, the unit is a four-legged animal. Presets: wolf, h
 - **opacity, glowing eyes, ground shadow:** as for humanoids. A see-through beast fades away when it dies.
 
 Beasts fill the same sheet rows as humanoids: `attack` is a bite, `cast` is a roar (or spitting the spell, with magic breath), `death` keels over, `channel` is a snarling crouch (or the breath stream), `hit` is a yelp and recoil, `run` is a gallop (or a fast scramble for sprawled beasts), `work` digs with the front paws, `carry` plods along with packs on its back, and `taunt` rears up pawing the air (sprawled beasts snap and lash the tail instead; winged ones spread their wings). Long beasts like crocodiles nearly fill a 32 px frame; use 48 px or larger to give them room.
+
+### Mounted units
+
+With **type** set to `mounted`, a humanoid rides a beast. Presets: knight (on an armoured horse), wolfRider (an orc on a big wolf), griffinRider (a spearman on a flying griffin). **🎲 randomize** puts a random humanoid on a random horse, wolf, bear, boar or lion.
+
+The **Rider** and **Mount** folders each start with a preset, to put any humanoid preset on any beast preset, followed by the usual controls for that unit. A few things are fixed by riding:
+
+- The rider always sits the same way, so it has no gait, body, opacity or shadow controls.
+- The mount always wears a seat: its **barding** is `saddle` or `armor`.
+- The mount sets the opacity of the whole unit, and casts the only ground shadow. A ghost wolf makes its rider see-through too.
+- Spells, and the effects sheet, use the rider's **magic color**.
+
+The rider sits astride the saddle, knees out over the mount's flanks; on a low mount like a lizard, the legs stretch out forward instead. It moves with the mount, leaning forward when it rears. Each row plays a mount animation and a rider animation together:
+
+| Row | Mount | Rider |
+|-----|-------|-------|
+| `idle` | idle | idle |
+| `walk`, `carry` | walk, carry (with packs) | sits still, bobbing with the saddle |
+| `run` | run | leans forward |
+| `attack` | walks on | attacks with what it holds |
+| `cast`, `channel` | stands | casts, channels |
+| `hit` | flinches | flinches |
+| `work` | digs | sits still |
+| `taunt` | rears | shakes its weapon overhead |
+| `death` | keels over | is thrown off and lands on the ground beside it |
+
+A rider on its mount is far taller than a unit on foot, so switching to `mounted` raises the **frameSize** to 64 px. A wolf rider fits in 48 px.
 
 ### Custom model
 
@@ -141,8 +168,8 @@ In short, columns are the directions `N, NE, E, SE, S`, and the west-facing ones
 ```
 src/
   main.ts              app wiring, GUI, export actions
-  unit/                procedural humanoid and beast: parameters, presets, body parts
-  anim/                humanoid and beast poses, animation definitions
+  unit/                procedural humanoid, beast and mounted unit: parameters, presets, body parts
+  anim/                humanoid, beast and mounted poses, animation definitions
   custom/              loading and posing imported models
   effects/             projectiles and hit effects for the effects sheet
   render/              palette, palette materials, sprite camera, pixel downsampling

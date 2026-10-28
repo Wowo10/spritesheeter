@@ -1,6 +1,7 @@
 import { PALETTE, type RGB } from '../render/palette';
 import type { Sheet } from './packer';
 import { indexedToRgba } from './packer';
+import { indexedPng, teamMaskPng } from './png';
 
 export function sheetToCanvas(
   sheet: Pick<Sheet, 'width' | 'height' | 'data'>,
@@ -23,11 +24,17 @@ function saveBlob(blob: Blob, filename: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function downloadPng(sheet: Sheet, filename: string, palette: RGB[] = PALETTE): void {
-  sheetToCanvas(sheet, palette).toBlob((blob) => blob && saveBlob(blob, filename), 'image/png');
+/** The sheet as an indexed (palette) PNG, drawn in the given palette. */
+export async function downloadPng(sheet: Sheet, filename: string, palette: RGB[] = PALETTE): Promise<void> {
+  downloadBinary(await indexedPng(sheet, palette), filename, 'image/png');
 }
 
-export function downloadBinary(data: ArrayBuffer, filename: string, type = 'application/octet-stream'): void {
+/** The team-coloured pixels of the sheet, grey per shade; see teamMaskPixels. */
+export async function downloadTeamMask(sheet: Sheet, filename: string): Promise<void> {
+  downloadBinary(await teamMaskPng(sheet), filename, 'image/png');
+}
+
+export function downloadBinary(data: BlobPart, filename: string, type = 'application/octet-stream'): void {
   saveBlob(new Blob([data], { type }), filename);
 }
 

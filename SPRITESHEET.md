@@ -1,13 +1,14 @@
 # Using an ssheet sprite sheet in your game
 
-Every export produces two files:
+Every export produces two files, plus a third if you ask for it:
 
 | File | What it is |
 |------|------------|
-| `<name>-<team>.png` | The sprite sheet (RGBA PNG, transparent background). **💾 export all team colors** writes one PNG per team colour. |
+| `<name>-<team>.png` | The sprite sheet: an indexed (palette) PNG whose palette is the JSON's `palette`, with index 0 transparent. Any image loader reads it like a normal PNG. **💾 export all team colors** writes one PNG per team colour. |
 | `<name>.json` | The atlas data: frame size, layout, animations (row, frame count, fps, loop), directions, ground anchor, palette and team colours. |
+| `<name>-team-mask.png` | Only with **team mask** ticked: the team-coloured pixels on their own, for recolouring in a shader (see [Team colours](#team-colours)). |
 
-You need both. The PNG holds the pixels and the JSON tells you where each frame is. Don't hardcode frame counts or rows. They change with the frame-count settings and with the animations checked in the **Export** folder (by default `idle`, `walk`, `attack` and `death`). A custom model sheet also only includes the animations that have a clip assigned.
+You need the first two. The PNG holds the pixels and the JSON tells you where each frame is. Don't hardcode frame counts or rows. They change with the frame-count settings and with the animations checked in the **Export** folder (by default `idle`, `walk`, `attack` and `death`). A custom model sheet also only includes the animations that have a clip assigned.
 
 ## Sheet layout
 
@@ -96,6 +97,7 @@ Example from a default humanoid (32 px frames, default frame counts, every anima
   },
   "image": "knight-1234-red.png",
   "imageTeam": "red",
+  "imageFormat": "indexed",
   "unit": { "...": "generator settings, for reference only" }
 }
 ```
@@ -115,6 +117,8 @@ Example from a default humanoid (32 px frames, default frame counts, every anima
 | `team` | Team-colour recolouring info (see below). |
 | `image` / `imageTeam` | Single-team export: the PNG's filename and which team colour it was drawn in. |
 | `images` | "Export all team colors": a map of team name → PNG filename (replaces `image`). |
+| `imageFormat` | `"indexed"`: the PNGs store palette indices. Older exports without this field are RGBA. |
+| `teamMask` | The team mask's filename, when one was exported. |
 | `unit` / `model` | What the sheet was generated from. Your game can ignore these. |
 
 ## Playing animations
@@ -213,11 +217,20 @@ function drawUnit(
 
 ## Team colours
 
-Units use a reserved 4-shade "team" ramp for their team-coloured parts. There are two ways to get coloured units into your game:
+Units use a reserved 4-shade "team" ramp for their team-coloured parts. There are three ways to get coloured units into your game:
 
 1. **One PNG per team (simplest).** Use **💾 export all team colors**. The JSON's `images` map gives the PNG for each team. Load the one you need.
-2. **Recolour at runtime from a single PNG.** The PNG is RGBA rather than indexed, so you swap colours by RGB value. Every pixel whose colour equals `team.colors[imageTeam][s]` becomes `team.colors[targetTeam][s]`, for shades `s = 0..3`. Do this once per team, when loading or in a shader, and cache the result.
+2. **Swap palette entries.** The PNG is indexed, and its team-coloured pixels use the palette entries `team.indices` (4 entries, dark to light). To recolour a unit for team `t`, replace palette entry `team.indices[s]` with `team.colors[t][s]` for shades `s = 0..3` before decoding the image, or in a palette shader. Nothing else in the sheet uses those entries.
+3. **Recolour in a shader with the team mask.** Tick **team mask** before exporting to also get `<name>-team-mask.png`. It's the size of the sheet and transparent everywhere except the team-coloured pixels. There, the grey value gives the shade: 0, 85, 170 and 255 for shades 0–3. Sample the sheet and the mask at the same UV:
 
-   Caveat: the `red` team ramp has the same RGB values as the regular `red` cloth ramp. If a unit uses `red` for non-team cloth, export with a non-red `imageTeam` (e.g. blue) before recolouring at runtime. Otherwise the red cloth will be recoloured too.
+   ```glsl
+   vec4 m = texture(teamMask, uv);
+   if (m.a > 0.5) {
+     int s = int(round(m.r * 3.0));      // 0..3
+     color.rgb = teamColors[s];          // team.colors[t][s], passed in as uniforms
+   }
+   ```
 
-`team.indices` and `palette` are palette indices, kept for tools that convert the sheet to an indexed or paletted format. They aren't needed for normal RGBA use.
+   The mask is the same for every team, so one mask serves all of them.
+
+Ways 2 and 3 pick out the team pixels by palette index rather than by colour. That avoids a trap in recolouring by RGB value: the `red` team ramp has the same colours as the regular `red` cloth ramp, so a colour-based swap would recolour red cloth too. If you do recolour by RGB value, for instance from an older RGBA export, export with a non-red `imageTeam` first.

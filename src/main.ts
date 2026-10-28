@@ -4,7 +4,7 @@ import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, humanoidAnimations, type Animati
 import { frameTime } from './anim/types';
 import { loadModelFiles, MODEL_EXTENSIONS } from './custom/load';
 import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
-import { downloadBinary, downloadJson, downloadPng, sheetToCanvas } from './export/download';
+import { downloadBinary, downloadJson, downloadPng, downloadTeamMask, sheetToCanvas } from './export/download';
 import { exportGlb, rowDuration } from './export/model';
 import { packSheet, type AnimationFrames, type Sheet } from './export/packer';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
@@ -65,6 +65,8 @@ const state = {
   previewAnim: 'walk' as AnimationName,
   /** Which rows go into the exported sheet; the previews always show them all. */
   exportAnims: Object.fromEntries(ANIMATION_NAMES.map((n) => [n, BASIC_ANIMS.includes(n)])) as Record<AnimationName, boolean>,
+  /** Also export the team mask: the team-coloured pixels, grey per shade. */
+  teamMask: false,
   team: 'red' as TeamColor,
   /** What the sheet shows: the procedural unit or the loaded custom model. */
   source: 'unit' as 'unit' | 'model',
@@ -109,8 +111,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
  * stays behind, since its file can't travel in a URL. The objects are state's own.
  */
 function sharedSettings() {
-  const { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, exportAnims, team } = state;
-  return { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, exportAnims, team };
+  const { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team } = state;
+  return { kind, preset, unit, beast, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team };
 }
 
 /** Applies the settings of a share link the page was opened from, before the GUI is built. */
@@ -297,13 +299,20 @@ function exportedSheet(): Sheet | null {
   return packSheet(anims, anchorOf(state.sprite));
 }
 
+/** JSON fields about the image files: always indexed, plus the team mask when it's written. */
+function imageFields(name: string): Record<string, unknown> {
+  return { imageFormat: 'indexed', ...(state.teamMask ? { teamMask: `${name}-team-mask.png` } : {}) };
+}
+
 function exportSheet(): void {
   const s = exportedSheet();
   if (!s) return;
   const name = exportName();
   const image = `${name}-${state.team}.png`;
-  downloadPng(s, image, teamPalette(state.team));
-  downloadJson({ ...s.meta, image, imageTeam: state.team, ...exportSource() }, `${name}.json`);
+  const fields = imageFields(name);
+  void downloadPng(s, image, teamPalette(state.team));
+  if (fields.teamMask) setTimeout(() => void downloadTeamMask(s, fields.teamMask as string), 250);
+  downloadJson({ ...s.meta, image, imageTeam: state.team, ...fields, ...exportSource() }, `${name}.json`);
 }
 
 /** One PNG per team colour, plus a JSON listing them. Downloads are staggered so browsers accept them. */
@@ -312,8 +321,11 @@ function exportAllTeams(): void {
   if (!s) return;
   const name = exportName();
   const images = Object.fromEntries(TEAM_COLOR_NAMES.map((t) => [t, `${name}-${t}.png`]));
-  TEAM_COLOR_NAMES.forEach((t, i) => setTimeout(() => downloadPng(s, images[t], teamPalette(t)), i * 250));
-  downloadJson({ ...s.meta, images, ...exportSource() }, `${name}.json`);
+  const fields = imageFields(name);
+  TEAM_COLOR_NAMES.forEach((t, i) => setTimeout(() => void downloadPng(s, images[t], teamPalette(t)), i * 250));
+  // the mask is the same for every team, so it's written once
+  if (fields.teamMask) setTimeout(() => void downloadTeamMask(s, fields.teamMask as string), TEAM_COLOR_NAMES.length * 250);
+  downloadJson({ ...s.meta, images, ...fields, ...exportSource() }, `${name}.json`);
 }
 
 // --- GUI --------------------------------------------------------------------
@@ -564,6 +576,7 @@ viewFolder.add(view, 'spriteView').name('sprite camera');
 
 const exportFolder = restoreOpen(gui.addFolder('Export'));
 for (const name of ANIMATION_NAMES) exportFolder.add(state.exportAnims, name);
+exportFolder.add(state, 'teamMask').name('team mask');
 exportFolder.add(actions, 'export').name('💾 export PNG + JSON');
 exportFolder.add(actions, 'exportAllTeams').name('💾 export all team colors');
 exportFolder.add(actions, 'exportModel').name('💾 export 3D model (.glb)');

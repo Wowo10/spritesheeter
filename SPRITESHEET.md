@@ -215,6 +215,18 @@ function drawUnit(
 - Set the sprite's origin/pivot to `anchor`, in pixels, or as the fraction `(anchor.x / frameWidth, anchor.y / frameHeight)`.
 - Use nearest-neighbour filtering and integer positions or scales to keep the pixel art sharp.
 
+## The effects sheet
+
+**💾 export effects** writes a second sheet of projectiles and hit effects: `<name>-effects-<team>.png` and `<name>-effects.json`. It has the same grid, JSON fields and palette as a unit sheet, so the same loading code reads it. Rows are effects instead of animations: `arrow`, `bolt`, `fireball`, `impact` and `puff`, in that order. The JSON's `magic` names the colour the spells were drawn in.
+
+Differences from a unit sheet:
+
+- **The anchor is the frame centre, not the feet.** Draw an effect with its `anchor` at the projectile's position, `drawX = px - anchor.x`, `drawY = py - anchor.y`. Projectiles fly at whatever height your game gives them; the sheet doesn't bake one in.
+- **Columns are flight directions.** Projectiles point the way they're flying. Pick the column with `directionOf(dx, dy)` from [Picking a direction from movement](#picking-a-direction-from-movement), using the projectile's velocity, and mirror the west-facing ones as for units. The sprites are drawn level, with no tilt for an arrow's arc, so either draw the same frame all the way or rotate it slightly in your engine.
+- **`impact` and `puff` look the same from every direction.** Use any column, `S` for example.
+- **One-shots end faint, not empty.** `impact` and `puff` play once and fade to about a quarter of their opacity by the last frame. Remove the effect once that frame has played. Don't hold it as you would a corpse.
+- **Team colour:** only the arrow's fletching uses the team ramp, so recolour it per player in the same ways as units ([Team colours](#team-colours)).
+
 ## Team colours
 
 Units use a reserved 4-shade "team" ramp for their team-coloured parts. There are three ways to get coloured units into your game:

@@ -1,5 +1,6 @@
 import GUI, { type Controller } from 'lil-gui';
 import { beastAnimations } from './anim/beast-anims';
+import { buildEffects, disposeEffects, type Effects } from './effects/effects';
 import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, humanoidAnimations, type AnimationName } from './anim/humanoid-anims';
 import { frameTime } from './anim/types';
 import { loadModelFiles, MODEL_EXTENSIONS } from './custom/load';
@@ -151,6 +152,7 @@ const mats = new MaterialLibrary();
 const sprites = new SpriteRenderer(view.renderer, view.scene, mats);
 const compass = new CompassPreview(document.getElementById('compass') as HTMLCanvasElement);
 const sheetCanvas = document.getElementById('sheet') as HTMLCanvasElement;
+const effectsCanvas = document.getElementById('effects') as HTMLCanvasElement;
 const side = document.getElementById('side')!;
 
 let unit: Humanoid | null = null;
@@ -233,13 +235,50 @@ function regenerate(): void {
   document.getElementById('sheetInfo')!.textContent =
     `${sheet.width}×${sheet.height} · ${sheet.meta.columns}×${sheet.meta.rows} frames of ${state.sprite.frameSize}px` +
     (ss < state.sprite.supersample ? ` · supersample ${ss} (max for this frame size)` : '');
+  renderEffects();
   applyTeam();
+}
+
+// --- effects sheet: projectiles and hit effects ---------------------------------
+
+let effects: Effects | null = null;
+let effectsSheet: Sheet | null = null;
+/** What the effects sheet was last rendered from; body edits don't change it, so they skip the work. */
+let effectsKey = '';
+
+/**
+ * Renders the effects in the unit's magic colour, centred in their frames (the frame centre
+ * is the projectile's position), at the unit's scale and with its sprite and lighting settings.
+ */
+function renderEffects(): void {
+  const magic = procedural().magic;
+  const key = JSON.stringify({ magic, sprite: state.sprite, lighting: state.lighting });
+  if (key === effectsKey) return;
+  effectsKey = key;
+  if (effects) disposeEffects(effects);
+  effects = buildEffects(mats, magic);
+  view.scene.add(effects.root);
+
+  const s = { ...state.sprite, anchorY: 0.5 };
+  const root = effects.root;
+  const anims = effects.defs.map((d) => ({
+    name: d.name,
+    fps: d.fps,
+    loop: d.loop,
+    frames: sprites.renderFrames(root, d.frames, (i) => d.apply(frameTime(d, i)), s),
+  }));
+  // kept in the scene only to be rendered
+  root.visible = false;
+  effectsSheet = packSheet(anims, anchorOf(s));
+  document.getElementById('effectsInfo')!.textContent =
+    `${effectsSheet.width}×${effectsSheet.height} · ${effectsSheet.meta.columns}×${effectsSheet.meta.rows} frames · ${magic}`;
 }
 
 /** Team colour is a pure palette swap: recolour the previews without rendering anything again. */
 function applyTeam(): void {
   mats.setRampColors('team', teamRgb(state.team));
   if (sheet) sheetToCanvas(sheet, teamPalette(state.team), sheetCanvas);
+  if (effectsSheet) sheetToCanvas(effectsSheet, teamPalette(state.team), effectsCanvas);
   showPreviewAnim();
   fitPreviews();
 }
@@ -250,7 +289,9 @@ function fitPreviews(): void {
   const avail = side.clientWidth - 2 * 12 - 2 * 10;
   compass.fitWidth(avail);
   // sheets wider than the panel (big frames) are shown scaled down
-  if (sheet) sheetCanvas.style.width = `${sheet.width > avail ? avail : sheet.width * Math.floor(avail / sheet.width)}px`;
+  for (const [s, canvas] of [[sheet, sheetCanvas], [effectsSheet, effectsCanvas]] as const) {
+    if (s) canvas.style.width = `${s.width > avail ? avail : s.width * Math.floor(avail / s.width)}px`;
+  }
 }
 
 function showPreviewAnim(): void {
@@ -415,6 +456,18 @@ async function exportModel(): Promise<void> {
   downloadBinary(glb, `${exportName()}-${state.team}.glb`, 'model/gltf-binary');
 }
 
+/** The effects sheet in the selected team colour (only the arrow's fletching is team-coloured). */
+function exportEffects(): void {
+  const s = effectsSheet;
+  if (!s) return;
+  const name = `${exportName()}-effects`;
+  const image = `${name}-${state.team}.png`;
+  const fields = imageFields(name);
+  void downloadPng(s, image, teamPalette(state.team));
+  if (fields.teamMask) setTimeout(() => void downloadTeamMask(s, fields.teamMask as string), 250);
+  downloadJson({ ...s.meta, image, imageTeam: state.team, ...fields, magic: procedural().magic }, `${name}.json`);
+}
+
 const actions = {
   randomize() {
     randomize(Math.floor(Math.random() * 1e6));
@@ -424,6 +477,7 @@ const actions = {
   export: exportSheet,
   exportAllTeams,
   exportModel,
+  exportEffects,
 };
 
 /** The seed of the generator in use, so one controller serves both. */
@@ -589,6 +643,7 @@ exportFolder.add(state, 'teamMask').name('team mask');
 exportFolder.add(actions, 'export').name('💾 export PNG + JSON');
 exportFolder.add(actions, 'exportAllTeams').name('💾 export all team colors');
 exportFolder.add(actions, 'exportModel').name('💾 export 3D model (.glb)');
+exportFolder.add(actions, 'exportEffects').name('💾 export effects');
 
 // --- custom model -------------------------------------------------------------
 

@@ -21,7 +21,7 @@ Other scripts:
 
 - **Left:** a 3D preview of the unit. Turn on **View → sprite camera** to look through the camera the sprites are rendered with.
 - **Right, top:** the selected animation playing in all 8 directions, as it will look in game.
-- **Right, bottom:** the whole sprite sheet.
+- **Right, below that:** the whole sprite sheet, and under it the [effects sheet](#effects).
 - **Control panel:** every setting. The sheet re-renders as soon as you change something.
 
 Drag the divider to resize the panels. Double-click it to reset.
@@ -96,6 +96,20 @@ Pick which animation to **preview**, and set the frame count (1–12) for each o
 
 Light direction, height and strength, front fill, ambient, and the thresholds that split the lighting into the 4 shades of each ramp.
 
+### Effects
+
+The **Effects** panel shows a second, small sheet of what units fire and leave behind. It's drawn the same way as the unit, with the same palette, outline, lighting and scale:
+
+| Effect | What it is | Frames |
+|--------|------------|--------|
+| `arrow` | wood shaft, steel head, team-coloured fletching | 1 |
+| `bolt` | a spell shard trailing sparks, spinning | 4, looping |
+| `fireball` | a glowing ball with flames streaming behind (breath attacks) | 4, looping |
+| `impact` | the burst where a bolt or fireball hits | 5, plays once |
+| `puff` | a cloud of grey dust where a unit fell | 5, plays once |
+
+`bolt`, `fireball` and `impact` use the unit's **magic color**, so they match its cast effect. The effects sheet follows the **Sprite** and **Lighting** settings. It doesn't re-render when you change the unit's body, so tweaking a unit stays quick.
+
 ## Undo
 
 **↶ undo** and **↷ redo**, at the top of the **Randomize & share** panel, step back and forth through your changes: every slider (once, when you let go), choice, preset, 🎲 randomize and seed. Ctrl+Z (⌘Z on a Mac) undoes. Ctrl+Shift+Z or Ctrl+Y redoes. Inside a text or number field those keys edit the text as usual. Undo covers the same settings as a share link, so a loaded custom model's settings aren't included. It keeps the last 100 steps, for as long as the page is open.
@@ -115,6 +129,7 @@ The **Export** folder has a checkbox for each animation. Only the checked ones g
 - **💾 export PNG + JSON:** writes `<name>-<team>.png` in the selected **team color**, plus `<name>.json`. The PNG is indexed: its palette is the JSON's `palette`, so a game can recolour a team by swapping 4 palette entries.
 - **team mask:** also writes `<name>-team-mask.png`: the team-coloured pixels alone, grey per shade, for recolouring in a shader. It's saved in share links.
 - **💾 export all team colors:** writes one PNG per team colour (red, blue, green, violet, orange, black, white, yellow) and a single JSON that lists them all.
+- **💾 export effects:** writes the effects sheet as `<name>-effects-<team>.png` (indexed, like the unit sheet) and `<name>-effects.json`. **team mask** works for it too.
 - **💾 export 3D model (.glb):** writes the procedural unit as `<name>-<team>.glb`, a binary glTF you can open in Blender, Godot, Unity and most 3D tools. Every animation is in it as a clip with the row's name (all of them, not just the checked ones), lasting as long as the row plays in the sheet and sampled at 30 keyframes a second. The unit is made of rigid parts on a node hierarchy rather than a skinned mesh, with one plain material per palette ramp in that ramp's colour. The team ramp gets the selected team colour, magic ramps glow and metal ramps are shiny. Parts that only show up sometimes, like the spell effect and the carried sack, are scaled to zero while hidden. The ground shadow is left out. See-through units get transparent materials, but the fade-outs in their death animations aren't carried over. A loaded custom model can't be exported this way; you already have its file.
 
 **See [SPRITESHEET.md](SPRITESHEET.md) for how to use the exported sheet in a game:** the grid layout, the JSON fields, direction mirroring, the ground anchor, animation playback and team colours.
@@ -129,6 +144,7 @@ src/
   unit/                procedural humanoid and beast: parameters, presets, body parts
   anim/                humanoid and beast poses, animation definitions
   custom/              loading and posing imported models
+  effects/             projectiles and hit effects for the effects sheet
   render/              palette, palette materials, sprite camera, pixel downsampling
   export/              sheet packing, PNG/JSON download
   ui/                  3D preview, direction preview, panel splitter

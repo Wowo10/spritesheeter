@@ -47,3 +47,80 @@ describe('per-hand items', () => {
     expect(yaw(unit('none', 'sword'))).toBeCloseTo(-yaw(unit('sword', 'none')));
   });
 });
+
+describe('cast', () => {
+  const caster = { ...PRESETS.mage };
+  const castAnim = () => humanoidAnimations().find((a) => a.name === 'cast')!;
+
+  it('is in every sheet', () => {
+    expect(humanoidAnimations().map((a) => a.name)).toContain('cast');
+  });
+
+  it('raises both hands with the spell overhead, then flings it forward', () => {
+    const top = castAnim().pose(0.45, caster, 0.8);
+    expect(top.joints.shoulderL![0]).toBeGreaterThan(150);
+    expect(top.joints.shoulderR![0]).toBeGreaterThan(150);
+    const release = castAnim().pose(0.7, caster, 0.8);
+    expect(release.fx!.pos[2]).toBeGreaterThan(top.fx!.pos[2]);
+    expect(release.fx!.scale).toBeGreaterThan(top.fx!.scale);
+  });
+
+  it('raises the spell higher with longer arms', () => {
+    const overhead = (armLength: number) => castAnim().pose(0.45, { ...caster, armLength }, 0.8).fx!.pos[1];
+    expect(overhead(1.3)).toBeGreaterThan(overhead(1));
+  });
+
+  it('shows no effect before and after', () => {
+    expect(castAnim().pose(0, caster, 0.8).fx!.scale).toBe(0);
+    expect(castAnim().pose(1, caster, 0.8).fx!.scale).toBe(0);
+  });
+});
+
+describe('cast blends with idle', () => {
+  it('starts and ends in the idle stance', () => {
+    const anims = humanoidAnimations();
+    const idle = anims.find((a) => a.name === 'attack')!.pose(0, PRESETS.mage, 0.8).joints;
+    const cast = anims.find((a) => a.name === 'cast')!;
+    for (const t of [0, 1]) {
+      const j = cast.pose(t, PRESETS.mage, 0.8).joints;
+      for (const name of ['shoulderL', 'elbowL', 'handL', 'shoulderR', 'elbowR', 'handR'] as const) {
+        expect(j[name]).toEqual(idle[name]);
+      }
+    }
+  });
+});
+
+describe('orb', () => {
+  it('a lone orb is thrust forward; a weapon takes precedence', () => {
+    const orbOnly = unit('none', 'orb');
+    expect(pitch(orbOnly, 0.75, 'shoulderL')).toBeGreaterThan(80);
+    expect(pitch(orbOnly, 0.75, 'shoulderR')).toBe(pitch(orbOnly, 0, 'shoulderR'));
+    const withSword = unit('sword', 'orb');
+    expect(pitch(withSword, 0.75, 'shoulderL')).toBe(pitch(withSword, 0, 'shoulderL'));
+  });
+
+  it('stays above the palm while casting', () => {
+    const u = unit('orb', 'none');
+    const cast = humanoidAnimations().find((a) => a.name === 'cast')!;
+    for (const t of [0.45, 0.7]) {
+      const j = cast.pose(t, u, 0.8).joints;
+      // shoulder + elbow + wrist = 90: the hand's up axis points at the sky
+      expect(j.shoulderR![0] + j.elbowR![0] + j.handR![0]).toBeCloseTo(90);
+    }
+  });
+});
+
+describe('cape motion', () => {
+  const anims = humanoidAnimations();
+  const flare = (name: string, t: number) => -anims.find((a) => a.name === name)!.pose(t, PRESETS.mage, 0.8).joints.cape![0];
+
+  it('is set by every animation and always lifts backward', () => {
+    for (const a of anims) {
+      for (const t of [0, 0.25, 0.5, 0.75]) expect(flare(a.name, t)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('streams further back when walking than when standing', () => {
+    expect(flare('walk', 0.25)).toBeGreaterThan(flare('idle', 0.25));
+  });
+});

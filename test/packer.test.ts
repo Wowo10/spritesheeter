@@ -33,6 +33,8 @@ describe('packSheet', () => {
     });
     expect(sheet.meta.mirrored).toEqual({ NW: 'NE', W: 'E', SW: 'SE' });
     expect(sheet.meta.anchor).toEqual({ x: 1, y: 2 });
+    expect(sheet.meta.team.indices).toHaveLength(4);
+    expect(Object.keys(sheet.meta.team.colors)).toContain('blue');
   });
 
   it('only ever uses palette colours or full transparency', () => {

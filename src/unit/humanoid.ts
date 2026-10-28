@@ -1,9 +1,9 @@
-import { Group, Mesh, Object3D } from 'three';
+import { Group, IcosahedronGeometry, Mesh, Object3D } from 'three';
 import { JOINTS, type JointName, type Pose } from '../anim/types';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
-import { handItems, itemKind, type UnitParams } from './params';
-import { buildBow, buildHelmet, buildQuiver, buildShield, buildWeapon, PartBuilder, type ShieldItem, type WeaponItem } from './parts';
+import { bodyDims, handItems, itemKind, type ShieldItem, type UnitParams, type WeaponItem } from './params';
+import { buildBow, buildCape, buildHelmet, buildOrb, buildQuiver, buildShield, buildWeapon, PartBuilder } from './parts';
 
 const DEG = Math.PI / 180;
 
@@ -17,6 +17,8 @@ export interface Humanoid {
   body: Group;
   joints: Record<JointName, Group>;
   hipHeight: number;
+  /** Spell effect, placed and sized by poses; hidden unless a pose shows it. */
+  fx: Group;
 }
 
 interface Outfit {
@@ -45,24 +47,7 @@ function outfit(p: UnitParams): Outfit {
 
 export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   const b = new PartBuilder(mats);
-  const H = p.height;
-  const B = p.bulk;
-  const S = p.headSize;
-
-  // stylised, chunky proportions: big head and hands read better at 32 px
-  const thigh = 0.36 * H;
-  const shin = 0.34 * H;
-  const footH = 0.08;
-  const legT = 0.14 * B;
-  const torsoLen = 0.5 * H;
-  const torsoW = 0.4 * B;
-  const torsoD = 0.24 * B;
-  const upperArm = 0.28 * H;
-  const forearm = 0.26 * H;
-  const armT = 0.11 * B;
-  const head = 0.36 * S;
-  const hipDrop = 0.04;
-  const hipHeight = hipDrop + thigh + shin + footH;
+  const { thigh, shin, footH, legT, torsoLen, torsoW, hipW, torsoD, upperArm, forearm, armT, head, hipDrop, hipHeight } = bodyDims(p);
   const o = outfit(p);
   const items = handItems(p);
 
@@ -80,16 +65,36 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   root.add(body);
   const { hips, spine } = joints;
   link(body, hips, [0, hipHeight, 0]);
-  b.box(hips, o.pelvis, [torsoW * 0.9, 0.16, torsoD * 0.95], [0, 0, 0]);
+  b.box(hips, o.pelvis, [hipW * 0.9, 0.16, torsoD * 0.95], [0, 0, 0]);
 
   link(hips, spine, [0, 0.06, 0]);
-  b.box(spine, o.torso, [torsoW * 0.88, torsoLen * 0.5, torsoD * 0.92], [0, torsoLen * 0.25, 0]);
+  b.box(spine, o.torso, [(hipW + torsoW) / 2 * 0.88, torsoLen * 0.5, torsoD * 0.92], [0, torsoLen * 0.25, 0]);
   b.box(spine, o.torso, [torsoW, torsoLen * 0.55, torsoD], [0, torsoLen * 0.72, 0]);
-  b.box(spine, 'leather', [torsoW * 0.92, 0.06, torsoD * 0.98], [0, 0.02, 0]); // belt
+  b.box(spine, 'leather', [hipW * 0.92, 0.06, torsoD * 0.98], [0, 0.02, 0]); // belt
   if (o.tabard) {
     b.box(spine, p.cloth, [torsoW * 0.62, torsoLen * 0.95, torsoD + 0.03], [0, torsoLen * 0.42, 0]);
   }
   if (items.L === 'bow' || items.R === 'bow') buildQuiver(b, spine, torsoLen, torsoD);
+
+  // cape joints always exist so poses can set them; they're just empty without a cape
+  link(spine, joints.cape, [0, torsoLen - 0.04, -torsoD / 2 - 0.04]);
+  if (p.cape !== 'none') {
+    // reaches about the same way down the legs whatever the proportions
+    const capeLength = 0.78 * (hipHeight + 0.06 + torsoLen - 0.04);
+    const upper = buildCape(b, joints.cape, joints.capeTip, p.cape, p.capeColor, torsoW, capeLength);
+    link(joints.cape, joints.capeTip, [0, -upper, 0]);
+    if (p.cape === 'broad') {
+      // mantle over the shoulders and arms, with a standing collar behind the neck
+      b.box(spine, p.capeColor, [torsoW * 1.45, 0.1, torsoD * 1.05], [0, torsoLen - 0.03, -torsoD * 0.05]);
+      b.box(spine, p.capeColor, [torsoW * 0.7, 0.14, 0.05], [0, torsoLen + 0.06, -torsoD / 2 - 0.02]);
+    } else {
+      // shoulder drape
+      b.box(spine, p.capeColor, [torsoW * 1.08, 0.07, torsoD * 0.7], [0, torsoLen - 0.02, -torsoD * 0.18]);
+    }
+    b.box(spine, p.metal, [0.07, 0.07, 0.04], [0, torsoLen - 0.08, torsoD / 2 + 0.01]); // clasp under the chin
+  } else {
+    link(joints.cape, joints.capeTip, [0, 0, 0]);
+  }
 
   link(spine, joints.head, [0, torsoLen, 0]);
   b.box(joints.head, p.skin, [head * 0.45, 0.06, head * 0.45], [0, 0.03, 0]); // neck
@@ -125,11 +130,14 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
       case 'bow':
         buildBow(b, grip);
         break;
+      case 'orb':
+        buildOrb(b, grip, p);
+        break;
     }
   }
 
   for (const side of ['L', 'R'] as const) {
-    const x = (side === 'L' ? 1 : -1) * torsoW * 0.24;
+    const x = (side === 'L' ? 1 : -1) * hipW * 0.24;
     const hip = joints[`hip${side}`];
     const knee = joints[`knee${side}`];
     link(hips, hip, [x, -hipDrop, 0]);
@@ -139,7 +147,18 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     b.box(knee, 'leather', [legT * 1.05, footH, legT * 1.7], [0, -shin - footH / 2, legT * 0.3]); // foot
   }
 
-  return { root, body, joints, hipHeight };
+  const fx = new Group();
+  fx.name = 'fx';
+  fx.visible = false;
+  body.add(fx);
+  b.mesh(fx, new IcosahedronGeometry(0.17, 0), p.magic);
+  // sparks around the orb: a tilted ring of small cubes
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    b.box(fx, p.magic, [0.07, 0.07, 0.07], [Math.cos(a) * 0.27, Math.sin(a) * 0.27, 0], [45, 45, 0]);
+  }
+
+  return { root, body, joints, hipHeight, fx };
 }
 
 export function applyPose(unit: Humanoid, pose: Pose): void {
@@ -155,6 +174,13 @@ export function applyPose(unit: Humanoid, pose: Pose): void {
   unit.joints.hips.position.x += x;
   unit.joints.hips.position.y += y;
   unit.joints.hips.position.z += z;
+
+  const scale = pose.fx?.scale ?? 0;
+  unit.fx.visible = scale > 0.01;
+  if (pose.fx) {
+    unit.fx.position.set(...pose.fx.pos);
+    unit.fx.scale.setScalar(Math.max(scale, 0.01));
+  }
 }
 
 export function disposeHumanoid(unit: Humanoid): void {

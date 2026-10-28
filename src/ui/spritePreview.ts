@@ -1,4 +1,5 @@
 import { indexedToRgba } from '../export/packer';
+import { PALETTE, type RGB } from '../render/palette';
 import { mirrorFrame, type IndexedFrame } from '../render/postprocess';
 import { MIRRORED, type AnyDirection, type Direction } from '../render/spriteRenderer';
 
@@ -8,11 +9,11 @@ const LAYOUT: (AnyDirection | null)[][] = [
   ['SW', 'S', 'SE'],
 ];
 
-function frameToCanvas(f: IndexedFrame): HTMLCanvasElement {
+function frameToCanvas(f: IndexedFrame, palette: RGB[]): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = f.width;
   c.height = f.height;
-  c.getContext('2d')!.putImageData(new ImageData(indexedToRgba(f.data), f.width, f.height), 0, 0);
+  c.getContext('2d')!.putImageData(new ImageData(indexedToRgba(f.data, palette), f.width, f.height), 0, 0);
   return c;
 }
 
@@ -24,25 +25,35 @@ export class CompassPreview {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly scale = 3,
+    private scale = 3,
   ) {
     this.ctx = canvas.getContext('2d')!;
   }
 
-  setFrames(byDir: Map<Direction, IndexedFrame[]>): void {
-    this.frames.clear();
-    for (const [dir, frames] of byDir) {
-      this.frames.set(dir, frames.map(frameToCanvas));
-      this.frameSize = frames[0]?.width ?? this.frameSize;
-    }
-    for (const [mirror, source] of Object.entries(MIRRORED) as [AnyDirection, Direction][]) {
-      this.frames.set(mirror, (byDir.get(source) ?? []).map((f) => frameToCanvas(mirrorFrame(f))));
-    }
+  /** Largest whole-pixel zoom at which the 3x3 grid fits the given width. */
+  fitWidth(width: number): void {
+    this.scale = Math.max(1, Math.floor(width / (this.frameSize * 3)));
+    this.resize();
+  }
+
+  private resize(): void {
     const px = this.frameSize * this.scale * 3;
     if (this.canvas.width !== px) {
       this.canvas.width = px;
       this.canvas.height = px;
     }
+  }
+
+  setFrames(byDir: Map<Direction, IndexedFrame[]>, palette: RGB[] = PALETTE): void {
+    this.frames.clear();
+    for (const [dir, frames] of byDir) {
+      this.frames.set(dir, frames.map((f) => frameToCanvas(f, palette)));
+      this.frameSize = frames[0]?.width ?? this.frameSize;
+    }
+    for (const [mirror, source] of Object.entries(MIRRORED) as [AnyDirection, Direction][]) {
+      this.frames.set(mirror, (byDir.get(source) ?? []).map((f) => frameToCanvas(mirrorFrame(f), palette)));
+    }
+    this.resize();
   }
 
   draw(frameIndex: number): void {

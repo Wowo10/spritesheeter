@@ -23,6 +23,11 @@ export const RAMPS = {
   bone: ['#5a5240', '#9a8e70', '#d0c4a0', '#f4ecd4'],
   hair: ['#1a120a', '#3a2614', '#5e4022', '#8a6236'],
   dark: ['#000000', '#141414', '#282828', '#3c3c3c'],
+  // new ramps go last: palette indices of exported sheets must not shift
+  fire: ['#9a2804', '#e0580c', '#fca828', '#fff4a8'],
+  arcane: ['#1a3a9a', '#2e7ae8', '#6ac8ff', '#e0f8ff'],
+  holy: ['#a07810', '#e0b830', '#fce878', '#fffce8'],
+  venom: ['#1a6a10', '#3aa82a', '#7ee050', '#e8ffc0'],
 } as const satisfies Record<string, readonly [string, string, string, string]>;
 
 export type RampName = keyof typeof RAMPS;
@@ -32,6 +37,8 @@ export const RAMP_NAMES = Object.keys(RAMPS) as RampName[];
 export const SKIN_RAMPS: RampName[] = ['skin', 'greenSkin', 'paleSkin'];
 export const CLOTH_RAMPS: RampName[] = ['team', 'red', 'blue', 'green', 'purple', 'yellow'];
 export const METAL_RAMPS: RampName[] = ['steel', 'gold', 'bronze'];
+/** Glowing ramps for spell effects. */
+export const MAGIC_RAMPS: RampName[] = ['arcane', 'holy', 'venom', 'fire'];
 
 export type RGB = [number, number, number];
 
@@ -58,4 +65,36 @@ export const OUTLINE_INDEX = paletteIndex(rampIndex('dark'), 0);
 
 export function rampRgb(name: RampName): RGB[] {
   return RAMPS[name].map(hexToRgb);
+}
+
+/**
+ * Classic 8-player team colours. The sprites themselves only ever reference the reserved
+ * 'team' ramp, so recolouring a sheet is a palette swap of those four entries.
+ */
+export const TEAM_COLORS = {
+  red: RAMPS.team,
+  blue: ['#0c1650', '#1c38a0', '#3462e0', '#7aa6ff'],
+  green: ['#08300c', '#105818', '#20a030', '#68e070'],
+  violet: ['#2c0c44', '#5a1c88', '#8c3cc8', '#c48cf0'],
+  orange: ['#4a1c04', '#94400c', '#e07018', '#ffb060'],
+  black: ['#08080c', '#1c1c24', '#34343e', '#54545e'],
+  white: ['#6a6a72', '#a4a4ac', '#d4d4dc', '#fcfcfc'],
+  yellow: ['#4a3c00', '#9a7c08', '#e0c020', '#fff070'],
+} as const satisfies Record<string, readonly [string, string, string, string]>;
+
+export type TeamColor = keyof typeof TEAM_COLORS;
+
+export const TEAM_COLOR_NAMES = Object.keys(TEAM_COLORS) as TeamColor[];
+
+/** Palette indices of the team ramp, dark to light: the entries a game swaps per player. */
+export const TEAM_INDICES = [0, 1, 2, 3].map((s) => paletteIndex(rampIndex('team'), s));
+
+export function teamRgb(team: TeamColor): RGB[] {
+  return TEAM_COLORS[team].map(hexToRgb);
+}
+
+export function teamPalette(team: TeamColor): RGB[] {
+  const pal = PALETTE.slice();
+  teamRgb(team).forEach((rgb, s) => (pal[TEAM_INDICES[s]] = rgb));
+  return pal;
 }

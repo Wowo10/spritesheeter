@@ -14,6 +14,9 @@ export const JOINTS = [
   'kneeL',
   'hipR',
   'kneeR',
+  // two-segment cape hanging from the upper back; pitch < 0 lifts it backward
+  'cape',
+  'capeTip',
 ] as const;
 
 export type JointName = (typeof JOINTS)[number];
@@ -32,6 +35,8 @@ export interface Pose {
   hips?: [number, number, number];
   /** Turn of the whole body around the vertical axis, in degrees, on top of the facing direction. */
   turn?: number;
+  /** Spell effect: position relative to the unit origin (facing +Z) and size; hidden when absent. */
+  fx?: { pos: [number, number, number]; scale: number };
 }
 
 export interface AnimationDef {

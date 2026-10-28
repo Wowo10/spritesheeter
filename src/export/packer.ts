@@ -1,4 +1,4 @@
-import { PALETTE, type RGB } from '../render/palette';
+import { PALETTE, TEAM_COLOR_NAMES, TEAM_INDICES, teamRgb, type RGB, type TeamColor } from '../render/palette';
 import type { IndexedFrame } from '../render/postprocess';
 import { DIRECTIONS, MIRRORED, type Direction } from '../render/spriteRenderer';
 
@@ -23,6 +23,8 @@ export interface SheetMeta {
   anchor: { x: number; y: number };
   animations: Record<string, { row: number; frames: number; fps: number; loop: boolean }>;
   palette: RGB[];
+  /** Palette entries to swap per player, and what to swap them to for each team colour. */
+  team: { indices: number[]; colors: Record<TeamColor, RGB[]> };
   [extra: string]: unknown;
 }
 
@@ -73,6 +75,10 @@ export function packSheet(anims: AnimationFrames[], anchor: { x: number; y: numb
       anchor,
       animations,
       palette: PALETTE,
+      team: {
+        indices: TEAM_INDICES,
+        colors: Object.fromEntries(TEAM_COLOR_NAMES.map((t) => [t, teamRgb(t)])) as Record<TeamColor, RGB[]>,
+      },
     },
   };
 }

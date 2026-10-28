@@ -131,7 +131,7 @@ function buildHair(b: PartBuilder, head: Object3D, style: HairStyle, fit: HeadFi
     case 'afro':
       // a big round puff, set back and up so the face stays clear; squashed under a helmet
       if (helmeted) b.mesh(head, new SphereGeometry(s * 0.62, 8, 6), ramp, [0, cy - s * 0.02, -s * 0.22]);
-      else b.mesh(head, new SphereGeometry(s * 0.74, 8, 6), ramp, [0, cy + s * 0.35, -s * 0.16]);
+      else b.mesh(head, new SphereGeometry(s * 0.94, 8, 6), ramp, [0, cy + s * 0.75, -s * 0.16]);
       break;
     case 'mohawk':
       // the crest is flattened by a helmet; the strip down the back of the head still shows

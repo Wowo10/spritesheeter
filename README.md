@@ -171,6 +171,18 @@ The **Effects** panel shows a second, small sheet of what units fire and leave b
 
 `bolt`, `fireball` and `impact` use the unit's **magic color** (a vehicle's **flame color**), so they match its cast effect. The effects sheet follows the **Sprite** and **Lighting** settings. It doesn't re-render when you change the unit's body, so tweaking a unit stays quick.
 
+## Playground
+
+**🎮 playground**, in the **Randomize & share** panel, opens the sheet in a little RTS test field. Two copies of the unit stand on a grid, one in the selected **team color** and one in a rival colour (blue, or red if yours is blue). Next to them are a gold mine and a depot. Everything is drawn from the sheets as they are, so you see the sprites as a game would show them: the rows in all 8 directions at their own fps, and the projectiles and hit effects from the [effects sheet](#effects). The grid is foreshortened to match the sprite camera's **elevation**.
+
+- **Select:** click a unit, or drag a box. Shift adds to the selection. **1** and **2** pick a unit.
+- **Right-click:** on the ground to move, on the other unit to attack, on the mine to gather, on the depot to drop off gold.
+- **A** attack, **C** cast, **H** channel, then click the target: a unit, or the ground for cast and channel. Right-click or Esc cancels.
+- **T** taunt, **G** gather, **S** stop. **R** switches moves between `walk` and `run`.
+- **Wheel** zooms in whole pixels, **middle-drag** pans, **Esc** closes.
+
+Units move as far per loop as their legs (or wheels) carry them, so you can see whether the feet slide. Bows shoot arrows; catapults, ballistas and flamethrowers shoot stones, javelins and fire. Everything else fights in melee. `cast` throws a spell bolt, or a fireball for beasts with **magic breath**. A beast without breath just roars. `channel` burns whatever it's aimed at. A hurt unit flinches (`hit`) and an idle one strikes back. At 0 HP it plays `death`, turns to dust and comes back a few seconds later. Gathering loops `work` at the mine for a few seconds, then `carry` back to the depot. Rows the sheet doesn't have are stood in for by similar ones (`run` by `walk`, `carry` by `walk`, `cast` by `attack`), or by `idle`.
+
 ## Undo
 
 **↶ undo** and **↷ redo**, at the top of the **Randomize & share** panel, step back and forth through your changes: every slider (once, when you let go), choice, preset, 🎲 randomize and seed. Ctrl+Z (⌘Z on a Mac) undoes. Ctrl+Shift+Z or Ctrl+Y redoes. Inside a text or number field those keys edit the text as usual. Undo covers the same settings as a share link, so a loaded custom model's settings aren't included. It keeps the last 100 steps, for as long as the page is open.
@@ -209,6 +221,7 @@ src/
   render/              palette, palette materials, sprite camera, pixel downsampling
   export/              sheet packing, PNG/JSON download
   ui/                  3D preview, direction preview, panel splitter
+  playground/          the RTS test field: sheet slicing, props, units fighting and gathering
 test/                  Vitest tests
 ```
 

@@ -10,6 +10,7 @@ import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
 import { downloadBinary, downloadJson, downloadPng, downloadTeamMask, sheetToCanvas } from './export/download';
 import { exportGlb, rowDuration } from './export/model';
 import { packSheet, type AnimationFrames, type Sheet } from './export/packer';
+import { openPlayground, type PlaygroundOptions, type Projectile } from './playground/playground';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
 import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
 import type { Outline } from './render/postprocess';
@@ -20,7 +21,7 @@ import { applyBeastPose, buildBeast, disposeBeast, type Beast } from './unit/bea
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
 import { applyMountedPose, buildMounted, copyMounted, disposeMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, randomMounted, type Mounted, type MountedParams } from './unit/mounted';
 import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
-import { ARMORS, BODIES, CAPES, GAITS, HAIR_STYLES, HAND_ITEMS, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
+import { ARMORS, BODIES, CAPES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
 import { applyVehiclePose, buildVehicle, disposeVehicle, type Vehicle } from './unit/vehicle';
 import { randomVehicle, VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
@@ -420,6 +421,46 @@ function exportAllTeams(): void {
   downloadJson({ ...s.meta, images, ...fields, ...exportSource() }, `${name}.json`);
 }
 
+// --- playground -------------------------------------------------------------
+
+/** What a vehicle's weapon shoots, whether it attacks or "casts"; a ram strikes up close. */
+const VEHICLE_SHOTS: Record<VehicleParams['weapon'], Projectile | null> = { ram: null, catapult: 'stone', ballista: 'javelin', flamethrower: 'fireball' };
+
+const hasBow = (u: UnitParams) => Object.values(handItems(u)).includes('bow');
+
+/**
+ * How far the unit gets per loop of walk and run (from its leg length and how far its legs
+ * swing), and what it shoots, so it moves and fights in the playground as it looks.
+ */
+function playgroundUnit(): Pick<PlaygroundOptions, 'stride' | 'attack' | 'cast' | 'channel'> {
+  // legs swinging ±28° walking cover about 1.9 leg lengths a loop; running, with a moment in the air, about 2.8
+  const legs = (hip: number) => ({ walk: 1.9 * hip, run: 2.8 * hip });
+  if (state.source === 'model' && custom) return { stride: legs(state.model.height / 2), attack: null, cast: 'bolt', channel: true };
+  if (beast) return { stride: legs(beast.hipHeight), attack: null, cast: state.beast.breath ? 'fireball' : null, channel: state.beast.breath };
+  if (mounted) return { stride: legs(mounted.beast.hipHeight), attack: hasBow(state.mounted.rider) ? 'arrow' : null, cast: 'bolt', channel: true };
+  if (vehicle) {
+    // the wheels turn a quarter turn a loop walking, half a turn running
+    const r = vehicle.dims.wheelR;
+    const shot = VEHICLE_SHOTS[state.vehicle.weapon];
+    return { stride: { walk: (Math.PI * r) / 2, run: Math.PI * r }, attack: shot, cast: shot, channel: state.vehicle.weapon === 'flamethrower' };
+  }
+  return { stride: legs(unit!.hipHeight), attack: hasBow(state.unit) ? 'arrow' : null, cast: 'bolt', channel: true };
+}
+
+/** Two of the unit, in the team colour and a rival's, to order around on a grid. */
+function showPlayground(): void {
+  if (!sheet) return;
+  openPlayground({
+    name: state.source === 'model' && custom ? custom.name : state.preset,
+    sheet,
+    effects: effectsSheet,
+    teams: [state.team, state.team === 'blue' ? 'red' : 'blue'],
+    pixelsPerUnit: state.sprite.pixelsPerUnit,
+    elevation: state.sprite.elevation,
+    ...playgroundUnit(),
+  });
+}
+
 // --- GUI --------------------------------------------------------------------
 
 const gui = new GUI({ title: 'menu' });
@@ -754,6 +795,7 @@ tools.add(seedOf, 'seed').onFinishChange((seed: number) => {
 });
 const SHARE_LABEL = '🔗 share';
 const shareController = tools.add({ share: copyShareLink }, 'share').name(SHARE_LABEL);
+tools.add({ playground: showPlayground }, 'playground').name('🎮 playground');
 
 const animFolder = restoreOpen(gui.addFolder('Animation'));
 animFolder.add(state, 'previewAnim', ANIMATION_NAMES).name('preview').onChange(showPreviewAnim);

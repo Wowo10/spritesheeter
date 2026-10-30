@@ -153,21 +153,20 @@ function death(t: number, p: VehicleParams): VehiclePose {
   };
 }
 
-/** Same rows, frame counts and timing as the other unit types, so all sheets line up. */
+/**
+ * Frame counts and timing as for the other unit types, so all sheets line up. A vehicle casts
+ * no spell, does no work and carries nothing, so it has no cast, work or carry rows: a game
+ * plays its attack, idle and walk for those.
+ */
 export function vehicleAnimations(counts: FrameCounts = DEFAULT_FRAME_COUNTS): VehicleAnimationDef[] {
-  const walk = roll(WALK_WHEEL_TURN, 1);
   const all: [VehicleAnimationDef['name'], number, boolean, PoseFn][] = [
     ['idle', 4, true, rest],
-    ['walk', 8, true, walk],
+    ['walk', 8, true, roll(WALK_WHEEL_TURN, 1)],
     ['attack', 8, false, attack],
-    // a vehicle has no spell: cast fires it as attack does
-    ['cast', 8, false, attack],
     ['death', 6, false, death],
     ['channel', 6, true, channel],
     ['hit', 10, false, hit],
     ['run', 12, true, roll(2 * WALK_WHEEL_TURN, 2)],
-    ['work', 8, true, rest],
-    ['carry', 8, true, walk],
     ['taunt', 8, false, taunt],
   ];
   return all.map(([name, fps, loop, pose]) => ({

@@ -43,6 +43,16 @@ describe('subjects', () => {
     for (const name of Object.keys(def.presets)) expect(def.preset(name, 99).seed).toBe(99);
   });
 
+  it('has only the rows that suit it: units never go up, buildings never walk, vehicles never cast', () => {
+    const names = (kind: Kind) => built(kind, undefined, (s) => s.rows(DEFAULT_FRAME_COUNTS).rows.map((r) => r.name));
+    const unit = ['idle', 'walk', 'attack', 'cast', 'death', 'channel', 'hit', 'run', 'work', 'carry', 'taunt'];
+    expect(names('humanoid')).toEqual(unit);
+    expect(names('beast')).toEqual(unit);
+    expect(names('mounted')).toEqual(unit);
+    expect(names('vehicle')).toEqual(['idle', 'walk', 'attack', 'death', 'channel', 'hit', 'run', 'taunt']);
+    expect(names('building')).toEqual(['idle', 'build', 'work', 'hit', 'death']);
+  });
+
   it('solid units rot; ghosts and see-through units fade away instead', () => {
     const rots = (kind: Kind, params: AnyParams) =>
       built(kind, params, (s) => s.rows(DEFAULT_FRAME_COUNTS).rot !== null);

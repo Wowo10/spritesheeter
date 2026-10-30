@@ -1,5 +1,4 @@
 import GUI, { type Controller } from 'lil-gui';
-import { BUILDING_ROWS } from './anim/building-anims';
 import { buildEffects, disposeEffects, type Effects } from './effects/effects';
 import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, type AnimationName } from './anim/humanoid-anims';
 import { frameTime } from './anim/types';
@@ -314,6 +313,7 @@ async function renderAll(id: number): Promise<void> {
   };
 
   playables = sheetRows(subject);
+  showRows(playables.map((r) => r.name));
   const rows = playables;
   const done: SampledAnimation[] = [];
   // the previewed row first, so the change shows there soonest
@@ -613,8 +613,6 @@ unitFolder
     lastPreset[shownKind] = state.preset;
     state.preset = lastPreset[kind];
     state.sprite.frameSize = Math.max(state.sprite.frameSize, kindDef(kind).minFrameSize);
-    // buildings have only some of the rows
-    if (kind === 'building' && ![...BUILDING_ROWS, 'decay'].includes(state.previewAnim)) state.previewAnim = 'idle';
     rebindUnit();
     rebuild();
   });
@@ -791,11 +789,11 @@ if (linkButtons.length > 1) {
 }
 
 const animFolder = restoreOpen(gui.addFolder('Animation'));
-animFolder.add(state, 'previewAnim', ANIMATION_NAMES).name('preview').onChange(showPreviewAnim);
-for (const name of ANIMATION_NAMES) {
-  animFolder.add(state.frames, name, 1, 12, 1).name(`${name} frames`).onFinishChange(queueRegenerate);
-}
-animFolder.add(state, 'decayHold', 1, 60, 1).name('decay hold (s)').onFinishChange(queueRegenerate);
+const previewController = animFolder.add(state, 'previewAnim', ANIMATION_NAMES).name('preview').onChange(showPreviewAnim);
+const frameControllers = ANIMATION_NAMES.map((name) =>
+  animFolder.add(state.frames, name, 1, 12, 1).name(`${name} frames`).onFinishChange(queueRegenerate),
+);
+const decayHoldController = animFolder.add(state, 'decayHold', 1, 60, 1).name('decay hold (s)').onFinishChange(queueRegenerate);
 
 const spriteFolder = restoreOpen(gui.addFolder('Sprite'), true);
 spriteFolder.add(state.sprite, 'frameSize', FRAME_SIZES).onFinishChange(queueRegenerate);
@@ -831,13 +829,36 @@ viewFolder.add(view, 'spriteView').name('sprite camera');
 viewFolder.add(view.ortho, 'zoom', MIN_ZOOM, MAX_ZOOM, 0.01).name('sprite zoom').onChange((z: number) => view.setSpriteZoom(z)).listen();
 
 const exportFolder = restoreOpen(gui.addFolder('Export'), true);
-for (const name of ANIMATION_NAMES) exportFolder.add(state.exportAnims, name);
+const exportControllers = ANIMATION_NAMES.map((name) => exportFolder.add(state.exportAnims, name));
 exportFolder.add(state, 'teamMask').name('team mask');
 exportFolder.add(actions, 'export').name('💾 export PNG + JSON');
 exportFolder.add(actions, 'exportAllTeams').name('💾 export all team colors');
 exportFolder.add(actions, 'exportModel').name('💾 export 3D model (.glb)');
 exportFolder.add(actions, 'exportEffects').name('💾 export effects');
 exportFolder.add(actions, 'exportPortrait').name('💾 export portrait');
+
+/** The rows the Animation and Export folders list, as a key. */
+let shownRows = '';
+/**
+ * Lists only the rows the sheet has: a unit doesn't go up, a building doesn't walk, a vehicle
+ * doesn't cast, and a see-through unit leaves no corpse to decay. Previews idle instead of a
+ * row that's gone.
+ */
+function showRows(names: string[]): void {
+  const has = (n: AnimationName) => names.includes(n);
+  if (!has(state.previewAnim)) state.previewAnim = has('idle') ? 'idle' : (names[0] as AnimationName);
+  const key = names.join();
+  previewController.updateDisplay();
+  if (key === shownRows) return;
+  shownRows = key;
+  // in place: an option controller's options() refills its select
+  previewController.options(ANIMATION_NAMES.filter(has));
+  ANIMATION_NAMES.forEach((n, i) => {
+    frameControllers[i].show(has(n));
+    exportControllers[i].show(has(n));
+  });
+  decayHoldController.show(has('decay'));
+}
 
 // --- custom model -------------------------------------------------------------
 

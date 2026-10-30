@@ -29,12 +29,19 @@ function store(width: number): void {
 export function initSplitter(splitter: HTMLElement, onResize: (width: number) => void): void {
   const root = document.documentElement;
   const clamp = (w: number) => Math.round(Math.min(Math.max(w, MIN_WIDTH), Math.max(MIN_WIDTH, window.innerWidth - MIN_VIEW)));
-  let width = clamp(readStored() ?? DEFAULT_WIDTH);
+  /** The width the user asked for; the window may be too narrow to show all of it. */
+  let wanted = readStored() ?? DEFAULT_WIDTH;
+  let width = clamp(wanted);
 
   const apply = (w: number) => {
     width = clamp(w);
     root.style.setProperty('--side-width', `${width}px`);
     onResize(width);
+  };
+  /** The user picked a width: remember what they actually got. */
+  const choose = (w: number) => {
+    apply(w);
+    wanted = width;
   };
 
   splitter.addEventListener('pointerdown', (e) => {
@@ -44,7 +51,7 @@ export function initSplitter(splitter: HTMLElement, onResize: (width: number) =>
     document.body.classList.add('resizing');
   });
   splitter.addEventListener('pointermove', (e) => {
-    if (splitter.hasPointerCapture(e.pointerId)) apply(window.innerWidth - e.clientX);
+    if (splitter.hasPointerCapture(e.pointerId)) choose(window.innerWidth - e.clientX);
   });
   const end = (e: PointerEvent) => {
     if (!splitter.hasPointerCapture(e.pointerId)) return;
@@ -56,11 +63,11 @@ export function initSplitter(splitter: HTMLElement, onResize: (width: number) =>
   splitter.addEventListener('pointerup', end);
   splitter.addEventListener('pointercancel', end);
   splitter.addEventListener('dblclick', () => {
-    apply(DEFAULT_WIDTH);
+    choose(DEFAULT_WIDTH);
     store(width);
   });
-  // a narrower window may no longer fit the stored width
-  window.addEventListener('resize', () => apply(width));
+  // a narrower window may not fit the wanted width; a wider one gets it back
+  window.addEventListener('resize', () => apply(wanted));
 
   apply(width);
 }

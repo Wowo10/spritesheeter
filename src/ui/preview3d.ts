@@ -13,6 +13,8 @@ export class Preview3D {
   readonly controls: OrbitControls;
   /** When set, the view shows exactly the sprite camera's angle (scaled to fit). */
   spriteView = false;
+  /** The sprite camera's frame (with margin) as last configured, before widening to the viewport aspect. */
+  private orthoFrame: { cy: number; half: number } | null = null;
 
   constructor(private readonly container: HTMLElement) {
     this.renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -49,16 +51,24 @@ export class Preview3D {
     this.renderer.setSize(w, h, false);
     this.perspective.aspect = w / h;
     this.perspective.updateProjectionMatrix();
-    this.fitOrtho();
+    this.applyOrthoAspect();
   }
 
   /** Call after configuring `ortho` like a sprite camera: widens it to the viewport aspect and adds margin. */
   fitOrtho(): void {
-    const { clientWidth: w, clientHeight: h } = this.container;
     const c = this.ortho;
     const margin = 1.3;
-    const cy = (c.top + c.bottom) / 2;
-    const half = ((c.top - c.bottom) / 2) * margin;
+    this.orthoFrame = { cy: (c.top + c.bottom) / 2, half: ((c.top - c.bottom) / 2) * margin };
+    this.applyOrthoAspect();
+  }
+
+  /** Re-fits the last configured frame to the viewport; safe to repeat (each resize starts from the same frame). */
+  private applyOrthoAspect(): void {
+    if (!this.orthoFrame) return;
+    const { clientWidth: w, clientHeight: h } = this.container;
+    if (w === 0 || h === 0) return;
+    const c = this.ortho;
+    const { cy, half } = this.orthoFrame;
     c.top = cy + half;
     c.bottom = cy - half;
     c.left = -half * (w / h);

@@ -132,7 +132,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   const headCenter = 0.05 + head / 2;
   markBody(b.box(joints.head, p.skin, [head, head * 1.05, head], [0, headCenter, 0]));
   buildHelmet(b, joints.head, p.helmet, { size: head, centerY: headCenter }, p);
-  buildFace(b, joints.head, p.face, { size: head, centerY: headCenter });
+  buildFace(b, joints.head, { size: head, centerY: headCenter }, p);
   if (p.glowEyes) {
     for (const side of [1, -1]) b.box(joints.head, p.magic, [head * 0.2, head * 0.13, 0.03], [side * head * 0.22, headCenter + head * 0.05, head / 2 + 0.01]);
   }
@@ -276,8 +276,8 @@ export function applyPose(unit: Humanoid, pose: Pose): void {
 }
 
 /**
- * Rots to a skeleton: skin to rotting flesh, then bones; clothes, belts and hair rot away.
- * Armour, helmets, weapons and shields are left lying with the bones.
+ * Rots to a skeleton: skin to rotting flesh, then bones; clothes, belts, hair, beards and ears
+ * rot away. Armour, helmets, weapons, shields and tusks are left lying with the bones.
  */
 export function humanoidDecay(p: UnitParams): DecayRecipe {
   return { flesh: [p.skin], rotted: 'rotSkin', bare: 'bone', thin: 0.5, keep: [...METAL_RAMPS, 'wood', 'bone', 'dark'], soft: { rot: 'hair', bare: 'hide' } };

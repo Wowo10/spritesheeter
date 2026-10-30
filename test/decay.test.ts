@@ -76,6 +76,18 @@ describe('decay', () => {
     expect(armour.every((m) => m.visible && m.scale.x === 1)).toBe(true);
   });
 
+  it('rots away beards, hair and ears whatever their colour, and leaves tusks on the skull', () => {
+    const p: UnitParams = { ...PRESETS.brute, hair: 'dark', beard: 'full', teeth: 'tusks', ears: 'long' };
+    const u = corpse(p);
+    const soft = meshes(u.joints.head).filter((m) => m.userData.soft);
+    const tusks = meshes(u.joints.head).filter((m) => rampOf(m) === 'bone');
+    expect(soft.length).toBeGreaterThan(0);
+    expect(tusks).toHaveLength(2);
+    applyDecay(u.root, 1, mats, humanoidDecay(p));
+    expect(soft.every((m) => !m.visible)).toBe(true);
+    expect(tusks.every((m) => m.visible && rampOf(m) === 'bone')).toBe(true);
+  });
+
   it('a zombie rots to bone too', () => {
     const u = corpse(PRESETS.zombie);
     applyDecay(u.root, 1, mats, humanoidDecay(PRESETS.zombie));

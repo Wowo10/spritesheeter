@@ -27,7 +27,7 @@ import { DEFAULT_BUILDING, LIGHT_RAMPS, randomBuilding, ROOF_RAMPS, ROOFS, TRIM_
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
 import { applyMountedPose, buildMounted, copyMounted, disposeMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, randomMounted, type Mounted, type MountedParams } from './unit/mounted';
 import { applyPose, buildHumanoid, disposeHumanoid, humanoidDecay, type Humanoid } from './unit/humanoid';
-import { ARMORS, BODIES, CAPES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, itemKind, randomUnit, twoHanded, type HandItem, type ThrowItem, type UnitParams } from './unit/params';
+import { ARMORS, BEARDS, BODIES, CAPES, EAR_STYLES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, itemKind, randomUnit, TEETH, twoHanded, type HandItem, type ThrowItem, type UnitParams } from './unit/params';
 import { applyVehiclePose, buildVehicle, disposeVehicle, vehicleDecay, type Vehicle } from './unit/vehicle';
 import { randomVehicle, VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
@@ -110,6 +110,9 @@ const state = {
 const UNIT_CHOICES: Record<string, readonly unknown[]> = {
   helmet: HELMETS,
   face: FACES,
+  beard: BEARDS,
+  teeth: TEETH,
+  ears: EAR_STYLES,
   armor: ARMORS,
   rightHand: HAND_ITEMS,
   leftHand: HAND_ITEMS,
@@ -830,6 +833,9 @@ function humanoidControllers(u: UnitParams, folder: GUI, rider = false): Control
     folder.add(u, 'legLength', 0.75, 1.3, 0.01).name('leg length'),
     folder.add(u, 'helmet', HELMETS),
     folder.add(u, 'face', FACES),
+    folder.add(u, 'beard', BEARDS),
+    folder.add(u, 'teeth', TEETH),
+    folder.add(u, 'ears', EAR_STYLES),
     folder.add(u, 'hairStyle', HAIR_STYLES).name('hair style'),
     folder.add(u, 'armor', ARMORS),
   ];

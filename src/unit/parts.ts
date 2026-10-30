@@ -4,6 +4,7 @@ import {
   CatmullRomCurve3,
   ConeGeometry,
   CylinderGeometry,
+  Euler,
   ExtrudeGeometry,
   IcosahedronGeometry,
   Mesh,
@@ -14,9 +15,10 @@ import {
   TubeGeometry,
   Vector3,
 } from 'three';
+import { markSoft } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
-import { bodyDims, type Cape, type Face, type HairStyle, type Helmet, type OrbItem, type ShieldItem, type UnitParams, type WeaponItem } from './params';
+import { bodyDims, type Cape, type HairStyle, type Helmet, type OrbItem, type ShieldItem, type UnitParams, type WeaponItem } from './params';
 
 type V3 = [number, number, number];
 
@@ -166,22 +168,83 @@ export function buildHelmet(b: PartBuilder, head: Object3D, kind: Helmet, fit: H
   }
 }
 
+/** Headgear that covers the face, leaving only what hangs below the chin. */
+const faceCovered = (h: Helmet) => h === 'full' || h === 'plagueMask';
+/** Headgear the ears would poke through. */
+const earsCovered = (h: Helmet) => faceCovered(h) || h === 'hood';
+
 /**
- * Face accessories, built after the headgear. A full helm or a mask simply covers them.
- * The eyepatch sits over the left eye (+X), standing out far enough to cover a glowing eye,
- * its strap a thin slab through the head that shows as a line where it crosses the faces.
+ * Ears, beard, teeth and face accessory, built after the headgear. Ears and beards are soft,
+ * so they rot away with the hair; tusks and fangs stay with the skull. Under a full helm or a
+ * mask only a beard's hang below the chin shows. The eyepatch sits over the left eye (+X),
+ * standing out far enough to cover a glowing eye, its strap a thin slab through the head that
+ * shows as a line where it crosses the faces.
  */
-export function buildFace(b: PartBuilder, head: Object3D, kind: Face, fit: HeadFit): void {
+export function buildFace(b: PartBuilder, head: Object3D, fit: HeadFit, p: UnitParams): void {
   const s = fit.size;
   const cy = fit.centerY;
-  switch (kind) {
+  // a cone from `base` toward its tip, the direction set by rotating +Y by `rotDeg`
+  const spike = (ramp: RampName, r: number, h: number, base: V3, rotDeg: V3) => {
+    const mid = new Vector3(0, h / 2, 0).applyEuler(new Euler(rotDeg[0] * DEG, rotDeg[1] * DEG, rotDeg[2] * DEG)).add(new Vector3(...base));
+    return b.cone(head, ramp, r, h, mid.toArray(), rotDeg);
+  };
+
+  if (p.ears !== 'plain' && !earsCovered(p.helmet)) {
+    const long = p.ears === 'long';
+    for (const side of [1, -1]) {
+      // out of the sides and swept back, flattened front to back
+      const ear = spike(p.skin, s * (long ? 0.17 : 0.16), s * (long ? 0.75 : 0.55), [side * s * 0.42, cy, -s * 0.05], [long ? -10 : -20, 0, -side * (long ? 78 : 60)]);
+      markSoft(ear).scale.z = 0.5;
+    }
+  }
+
+  const covered = faceCovered(p.helmet);
+  const beard = (size: V3, pos: V3, rotDeg?: V3) => markSoft(b.box(head, p.hair, size, pos, rotDeg));
+  const moustache = () => {
+    beard([s * 0.56, s * 0.11, s * 0.1], [0, cy - s * 0.2, s * 0.53]);
+    for (const side of [1, -1]) beard([s * 0.11, s * 0.26, s * 0.1], [side * s * 0.27, cy - s * 0.3, s * 0.53]);
+  };
+  switch (p.beard) {
     case 'none':
       break;
-    case 'eyepatch':
-      b.box(head, 'dark', [s * 0.26, s * 0.22, 0.03], [s * 0.22, cy + s * 0.05, s / 2 + 0.025]);
-      // rising from the patch across the forehead to above the other ear
-      b.box(head, 'dark', [s * 1.04, s * 0.06, s * 1.04], [0, cy + s * 0.13, 0], [0, 0, -20]);
+    case 'moustache':
+      if (!covered) moustache();
       break;
+    case 'goatee':
+      if (!covered) {
+        moustache();
+        beard([s * 0.32, s * 0.22, s * 0.1], [0, cy - s * 0.42, s * 0.52]);
+      }
+      markSoft(spike(p.hair, s * 0.15, s * 0.35, [0, cy - s * 0.5, s * 0.45], [180, 0, 0]));
+      break;
+    case 'full':
+    case 'long':
+      if (!covered) {
+        moustache();
+        // round the jaw from ear to ear, below the cheeks so the face doesn't read as a mask
+        beard([s * 1.08, s * 0.34, s * 0.62], [0, cy - s * 0.4, s * 0.22]);
+      }
+      if (p.beard === 'full') {
+        beard([s * 0.84, s * 0.3, s * 0.5], [0, cy - s * 0.68, s * 0.28]);
+      } else {
+        // down the chest, its tip pushed forward so it lies over the torso
+        const hang = s * 1.0;
+        markSoft(b.taper(head, p.hair, s * 0.4, s * 0.12, hang, [0, cy - s * 0.5 - hang / 2, s * 0.4], [-10, 0, 0])).scale.z = 0.6;
+      }
+      break;
+  }
+
+  if (!covered) {
+    for (const side of [1, -1]) {
+      if (p.teeth === 'tusks') spike('bone', s * 0.13, s * 0.45, [side * s * 0.3, cy - s * 0.45, s * 0.56], [25, 0, -side * 15]);
+      if (p.teeth === 'fangs') spike('bone', s * 0.08, s * 0.26, [side * s * 0.13, cy - s * 0.24, s * 0.53], [180, 0, 0]);
+    }
+  }
+
+  if (p.face === 'eyepatch') {
+    b.box(head, 'dark', [s * 0.26, s * 0.22, 0.03], [s * 0.22, cy + s * 0.05, s / 2 + 0.025]);
+    // rising from the patch across the forehead to above the other ear
+    b.box(head, 'dark', [s * 1.04, s * 0.06, s * 1.04], [0, cy + s * 0.13, 0], [0, 0, -20]);
   }
 }
 
@@ -237,27 +300,27 @@ function buildOpenHelm(b: PartBuilder, head: Object3D, fit: HeadFit, p: UnitPara
 function buildHair(b: PartBuilder, head: Object3D, style: HairStyle, fit: HeadFit, ramp: RampName, helmeted: boolean): void {
   const s = fit.size;
   const cy = fit.centerY;
-  const top = () => b.box(head, ramp, [s * 1.08, s * 0.32, s * 1.08], [0, cy + s * 0.4, -s * 0.02]);
+  const top = () => markSoft(b.box(head, ramp, [s * 1.08, s * 0.32, s * 1.08], [0, cy + s * 0.4, -s * 0.02]));
   switch (style) {
     case 'short':
       if (!helmeted) top();
-      b.box(head, ramp, [s * 1.04, s * 0.7, s * 0.3], [0, cy + s * 0.1, -s * 0.4]);
+      markSoft(b.box(head, ramp, [s * 1.04, s * 0.7, s * 0.3], [0, cy + s * 0.1, -s * 0.4]));
       break;
     case 'long':
       if (!helmeted) top();
       // down the back to the shoulders, with locks framing the face
-      b.box(head, ramp, [s * 1.1, s * 1.3, s * 0.3], [0, cy - s * 0.15, -s * 0.42]);
-      for (const side of [1, -1]) b.box(head, ramp, [s * 0.14, s * 0.95, s * 0.55], [side * s * 0.56, cy - s * 0.05, -s * 0.12]);
+      markSoft(b.box(head, ramp, [s * 1.1, s * 1.3, s * 0.3], [0, cy - s * 0.15, -s * 0.42]));
+      for (const side of [1, -1]) markSoft(b.box(head, ramp, [s * 0.14, s * 0.95, s * 0.55], [side * s * 0.56, cy - s * 0.05, -s * 0.12]));
       break;
     case 'afro':
       // a big round puff, set back and up so the face stays clear; squashed under a helmet
-      if (helmeted) b.mesh(head, new SphereGeometry(s * 0.62, 8, 6), ramp, [0, cy - s * 0.02, -s * 0.22]);
-      else b.mesh(head, new SphereGeometry(s * 0.94, 8, 6), ramp, [0, cy + s * 0.75, -s * 0.16]);
+      if (helmeted) markSoft(b.mesh(head, new SphereGeometry(s * 0.62, 8, 6), ramp, [0, cy - s * 0.02, -s * 0.22]));
+      else markSoft(b.mesh(head, new SphereGeometry(s * 0.94, 8, 6), ramp, [0, cy + s * 0.75, -s * 0.16]));
       break;
     case 'mohawk':
       // the crest is flattened by a helmet; the strip down the back of the head still shows
-      if (!helmeted) b.box(head, ramp, [s * 0.24, s * 0.42, s * 0.95], [0, cy + s * 0.68, -s * 0.05]);
-      b.box(head, ramp, [s * 0.24, s * 0.6, s * 0.2], [0, cy + s * 0.15, -s * 0.52]);
+      if (!helmeted) markSoft(b.box(head, ramp, [s * 0.24, s * 0.42, s * 0.95], [0, cy + s * 0.68, -s * 0.05]));
+      markSoft(b.box(head, ramp, [s * 0.24, s * 0.6, s * 0.2], [0, cy + s * 0.15, -s * 0.52]));
       break;
     case 'bald':
       break;

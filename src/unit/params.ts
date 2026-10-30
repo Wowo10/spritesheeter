@@ -19,6 +19,12 @@ export const HELMETS = [
 ] as const;
 /** Worn on the face, under or over any headgear. */
 export const FACES = ['none', 'eyepatch'] as const;
+/** In the hair colour; a full helm or a mask leaves only what hangs below the chin. */
+export const BEARDS = ['none', 'moustache', 'goatee', 'full', 'long'] as const;
+/** tusks: up from the lower jaw, orc-style; fangs: down from the upper lip. */
+export const TEETH = ['none', 'tusks', 'fangs'] as const;
+/** plain: none sticking out; pointed: short points; long: big ears out to the sides. */
+export const EAR_STYLES = ['plain', 'pointed', 'long'] as const;
 export const ARMORS = ['none', 'leather', 'chain', 'plate', 'robe'] as const;
 export const CAPES = ['none', 'long', 'broad'] as const;
 export const HAIR_STYLES = ['short', 'long', 'afro', 'mohawk', 'bald'] as const;
@@ -91,6 +97,9 @@ export const HAND_ITEMS = [
 export type Helmet = (typeof HELMETS)[number];
 export type Armor = (typeof ARMORS)[number];
 export type Face = (typeof FACES)[number];
+export type Beard = (typeof BEARDS)[number];
+export type Teeth = (typeof TEETH)[number];
+export type EarStyle = (typeof EAR_STYLES)[number];
 export type HandItem = (typeof HAND_ITEMS)[number];
 export type Cape = (typeof CAPES)[number];
 export type HairStyle = (typeof HAIR_STYLES)[number];
@@ -121,6 +130,9 @@ export interface UnitParams {
   legLength: number;
   helmet: Helmet;
   face: Face;
+  beard: Beard;
+  teeth: Teeth;
+  ears: EarStyle;
   armor: Armor;
   rightHand: HandItem;
   leftHand: HandItem;
@@ -309,12 +321,16 @@ const BASE: UnitParams = {
   glowEyes: false,
   shadow: false,
   face: 'none',
+  beard: 'none',
+  teeth: 'none',
+  ears: 'plain',
 };
 
 export const PRESETS: Record<string, UnitParams> = {
   swordsman: { ...BASE, helmet: 'full', armor: 'chain', rightHand: 'sword', leftHand: 'kiteShield' },
   axeman: {
     ...BASE,
+    teeth: 'tusks',
     bulk: 1.25,
     headSize: 1.1,
     helmet: 'horned',
@@ -338,6 +354,7 @@ export const PRESETS: Record<string, UnitParams> = {
   },
   berserker: {
     ...BASE,
+    teeth: 'tusks',
     bulk: 1.3,
     headSize: 1.1,
     helmet: 'horned',
@@ -346,12 +363,14 @@ export const PRESETS: Record<string, UnitParams> = {
     leftHand: 'axe',
     skin: 'greenSkin',
   },
-  duelist: { ...BASE, bulk: 0.9, helmet: 'none', armor: 'leather', rightHand: 'sword', leftHand: 'sword', hairStyle: 'long', hair: 'yellow' },
+  duelist: { ...BASE, beard: 'goatee', bulk: 0.9, helmet: 'none', armor: 'leather', rightHand: 'sword', leftHand: 'sword', hairStyle: 'long', hair: 'yellow' },
   shieldbearer: { ...BASE, bulk: 1.2, helmet: 'full', armor: 'plate', rightHand: 'none', leftHand: 'kiteShield' },
   worker: { ...BASE, bulk: 0.95, helmet: 'none', armor: 'none', rightHand: 'pickaxe', leftHand: 'none', hairStyle: 'afro', hair: 'dark' },
-  militia: { ...BASE, helmet: 'hood', armor: 'none', rightHand: 'pitchfork', leftHand: 'torch', hair: 'hair' },
+  militia: { ...BASE, beard: 'moustache', helmet: 'hood', armor: 'none', rightHand: 'pitchfork', leftHand: 'torch', hair: 'hair' },
   mage: {
     ...BASE,
+    beard: 'long',
+    hair: 'bone',
     bulk: 0.85,
     height: 1.05,
     helmet: 'hood',
@@ -363,6 +382,7 @@ export const PRESETS: Record<string, UnitParams> = {
   },
   warlock: {
     ...BASE,
+    teeth: 'fangs',
     bulk: 0.9,
     helmet: 'hood',
     armor: 'none',
@@ -374,6 +394,7 @@ export const PRESETS: Record<string, UnitParams> = {
   },
   priest: {
     ...BASE,
+    beard: 'long',
     helmet: 'none',
     armor: 'robe',
     rightHand: 'mace',
@@ -386,6 +407,7 @@ export const PRESETS: Record<string, UnitParams> = {
   },
   shaman: {
     ...BASE,
+    teeth: 'tusks',
     bulk: 1.1,
     helmet: 'horned',
     armor: 'leather',
@@ -395,7 +417,7 @@ export const PRESETS: Record<string, UnitParams> = {
     metal: 'bronze',
     magic: 'venom',
   },
-  guard: { ...BASE, height: 1.05, helmet: 'cap', armor: 'chain', rightHand: 'halberd', leftHand: 'none' },
+  guard: { ...BASE, beard: 'moustache', height: 1.05, helmet: 'cap', armor: 'chain', rightHand: 'halberd', leftHand: 'none' },
   ghost: {
     ...BASE,
     bulk: 0.9,
@@ -428,15 +450,15 @@ export const PRESETS: Record<string, UnitParams> = {
     skin: 'rotSkin',
     gait: 'shamble',
   },
-  brute: { ...BASE, bulk: 1.4, headSize: 1.15, shoulderWidth: 1.15, armLength: 1.12, armThickness: 1.2, legLength: 0.9, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'club', leftHand: 'none', skin: 'greenSkin' },
-  pirate: { ...BASE, bulk: 0.95, helmet: 'tricorn', face: 'eyepatch', armor: 'none', rightHand: 'sabre', leftHand: 'none', hairStyle: 'long', hair: 'dark' },
+  brute: { ...BASE, teeth: 'tusks', ears: 'pointed', bulk: 1.4, headSize: 1.15, shoulderWidth: 1.15, armLength: 1.12, armThickness: 1.2, legLength: 0.9, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'club', leftHand: 'none', skin: 'greenSkin' },
+  pirate: { ...BASE, beard: 'full', bulk: 0.95, helmet: 'tricorn', face: 'eyepatch', armor: 'none', rightHand: 'sabre', leftHand: 'none', hairStyle: 'long', hair: 'dark' },
   monk: { ...BASE, bulk: 0.95, helmet: 'none', armor: 'robe', rightHand: 'crook', leftHand: 'none', hairStyle: 'bald', magic: 'holy' },
   crossbowman: { ...BASE, helmet: 'cap', armor: 'chain', rightHand: 'crossbow', leftHand: 'none' },
   champion: { ...BASE, bulk: 1.15, helmet: 'full', armor: 'plate', rightHand: 'greatsword', leftHand: 'none', cape: 'broad' },
-  crusher: { ...BASE, bulk: 1.3, headSize: 1.1, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'maul', leftHand: 'none', skin: 'greenSkin' },
+  crusher: { ...BASE, teeth: 'tusks', ears: 'pointed', bulk: 1.3, headSize: 1.1, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'maul', leftHand: 'none', skin: 'greenSkin' },
   skirmisher: { ...BASE, bulk: 0.9, helmet: 'cap', armor: 'leather', rightHand: 'javelin', leftHand: 'roundShield' },
   bomber: { ...BASE, helmet: 'bandana', armor: 'none', rightHand: 'bomb', leftHand: 'none', hairStyle: 'short', hair: 'dark' },
-  buccaneer: { ...BASE, bulk: 0.95, helmet: 'tricorn', armor: 'none', rightHand: 'pistol', leftHand: 'sabre', hairStyle: 'long', hair: 'dark' },
+  buccaneer: { ...BASE, beard: 'moustache', bulk: 0.95, helmet: 'tricorn', armor: 'none', rightHand: 'pistol', leftHand: 'sabre', hairStyle: 'long', hair: 'dark' },
   musketeer: { ...BASE, helmet: 'featherCap', armor: 'chain', rightHand: 'musket', leftHand: 'none', cape: 'long' },
 };
 
@@ -489,6 +511,9 @@ export function randomUnit(seed: number): UnitParams {
     glowEyes: false,
     shadow: false,
     face: rng() < 0.1 ? 'eyepatch' : 'none',
+    beard: 'none',
+    teeth: 'none',
+    ears: 'plain',
   };
   // a third of the archers carry a crossbow instead, its other hand free to steady it
   if (archer && rng() < 0.35) {
@@ -503,6 +528,11 @@ export function randomUnit(seed: number): UnitParams {
     // and a few others throw theirs, keeping whatever the other hand holds
     unit.rightHand = pick(rng, THROWN);
   }
+  // drawn after everything else so they didn't change any earlier field for a given seed
+  const green = unit.skin === 'greenSkin';
+  if (rng() < 0.3) unit.beard = pick(rng, BEARDS.filter((b) => b !== 'none'));
+  if (rng() < (green ? 0.6 : 0.05)) unit.teeth = green ? 'tusks' : 'fangs';
+  if (rng() < (green ? 0.5 : 0.1)) unit.ears = rng() < 0.6 ? 'pointed' : 'long';
   return unit;
 }
 

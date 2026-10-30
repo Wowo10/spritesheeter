@@ -42,6 +42,12 @@ export function markBody<M extends Mesh>(mesh: M): M {
   return mesh;
 }
 
+/** Rots away like cloth whatever its colour: hair and ears, which shouldn't be left as bone. */
+export function markSoft<M extends Mesh>(mesh: M): M {
+  mesh.userData.soft = true;
+  return mesh;
+}
+
 /**
  * Rots everything under `root` by d, 0 (as it fell) to 1 (bare bones). Each mesh rots and is
  * left bare at a moment of its own, so a corpse falls apart piece by piece. Undone by
@@ -58,6 +64,7 @@ export function applyDecay(root: Object3D, d: number, mats: MaterialLibrary, rec
     if (d < rotAt) return;
     const bare = d >= bareAt;
     const swap = (ramp: RampName): RampName | 'hide' | null => {
+      if (o.userData.soft === true) return MAGIC_RAMPS.includes(ramp) ? 'hide' : bare ? recipe.soft.bare : recipe.soft.rot;
       const flesh = recipe.flesh.includes(ramp) || (o.userData.body === true && !METAL_RAMPS.includes(ramp));
       if (flesh) return bare ? recipe.bare : ramp === recipe.bare ? null : recipe.rotted;
       if (MAGIC_RAMPS.includes(ramp)) return 'hide';

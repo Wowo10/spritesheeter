@@ -2,7 +2,7 @@ import { Box3, Mesh, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MaterialLibrary } from '../src/render/materials';
 import { buildHumanoid, disposeHumanoid } from '../src/unit/humanoid';
-import { HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, type Hand, type HandItem, type UnitParams } from '../src/unit/params';
+import { BEARDS, EAR_STYLES, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, TEETH, type Hand, type HandItem, type UnitParams } from '../src/unit/params';
 
 const mats = new MaterialLibrary();
 
@@ -97,6 +97,39 @@ describe('face', () => {
     for (const helmet of HELMETS) {
       expect(count({ ...PRESETS.pirate, helmet, face: 'eyepatch' }), helmet).toBeGreaterThan(count({ ...PRESETS.pirate, helmet, face: 'none' }));
     }
+  });
+});
+
+describe('facial features', () => {
+  const count = (p: Partial<UnitParams>) => {
+    const u = buildHumanoid({ ...PRESETS.brute, beard: 'none', teeth: 'none', ears: 'plain', ...p }, mats);
+    const n = meshesIn(u.joints.head);
+    disposeHumanoid(u);
+    return n;
+  };
+
+  it('every beard, teeth and ears adds to a bare head', () => {
+    const bare = count({});
+    for (const beard of BEARDS.filter((b) => b !== 'none')) expect(count({ beard }), beard).toBeGreaterThan(bare);
+    for (const teeth of TEETH.filter((t) => t !== 'none')) expect(count({ teeth }), teeth).toBeGreaterThan(bare);
+    for (const ears of EAR_STYLES.filter((e) => e !== 'plain')) expect(count({ ears }), ears).toBeGreaterThan(bare);
+  });
+
+  it('they all go together, with an eyepatch too', () => {
+    const one = count({ beard: 'full' }) + count({ teeth: 'tusks' }) + count({ ears: 'long' }) + count({ face: 'eyepatch' });
+    expect(count({ beard: 'full', teeth: 'tusks', ears: 'long', face: 'eyepatch' })).toBe(one - 3 * count({}));
+  });
+
+  it('a full helm or mask hides the face, but a beard still hangs out below it', () => {
+    for (const helmet of ['full', 'plagueMask'] as const) {
+      expect(count({ helmet, beard: 'moustache' }), helmet).toBe(count({ helmet }));
+      expect(count({ helmet, teeth: 'tusks' }), helmet).toBe(count({ helmet }));
+      expect(count({ helmet, beard: 'long' }), helmet).toBeGreaterThan(count({ helmet }));
+    }
+  });
+
+  it('a hood hides the ears', () => {
+    expect(count({ helmet: 'hood', ears: 'long' })).toBe(count({ helmet: 'hood' }));
   });
 });
 

@@ -14,6 +14,14 @@ describe('rng', () => {
     expect(randomUnit(1234)).not.toEqual(randomUnit(1235));
   });
 
+  it('gives some units beards, and tusks mostly to the green-skinned', () => {
+    const units = Array.from({ length: 300 }, (_, seed) => randomUnit(seed));
+    expect(units.some((u) => u.beard !== 'none')).toBe(true);
+    const tusked = units.filter((u) => u.teeth === 'tusks');
+    expect(tusked.length).toBeGreaterThan(0);
+    expect(tusked.every((u) => u.skin === 'greenSkin')).toBe(true);
+  });
+
   it('gives archers an empty draw hand', () => {
     let archers = 0;
     for (let seed = 0; seed < 200; seed++) {

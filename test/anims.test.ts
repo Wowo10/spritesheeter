@@ -13,6 +13,7 @@ const pitch = (u: UnitParams, t: number, joint: JointName) => attack.pose(t, u, 
 describe('per-hand items', () => {
   it('a bow empties the other hand', () => {
     expect(handItems(unit('sword', 'bow'))).toEqual({ L: 'bow', R: 'none' });
+    expect(handItems(unit('longbow', 'kiteShield'))).toEqual({ L: 'none', R: 'longbow' });
     expect(handItems(unit('bow', 'kiteShield'))).toEqual({ L: 'none', R: 'bow' });
     expect(handItems(unit('axe', 'axe'))).toEqual({ L: 'axe', R: 'axe' });
   });

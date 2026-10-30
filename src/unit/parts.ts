@@ -804,11 +804,15 @@ export function buildOrb(b: PartBuilder, hand: Object3D, kind: OrbItem, p: UnitP
   }
 }
 
-/** Bow limbs run along the hand's Z axis and bow toward -Y, i.e. forward when the arm points at the target. */
-export function buildBow(b: PartBuilder, hand: Object3D): void {
-  const curve = new QuadraticBezierCurve3(new Vector3(0, 0.18, -0.55), new Vector3(0, -0.18, 0), new Vector3(0, 0.18, 0.55));
+/**
+ * Bow limbs run along the hand's Z axis and bow toward -Y, i.e. forward when the arm points at
+ * the target. `length` stretches the limbs (a longbow), keeping the same bend.
+ */
+export function buildBow(b: PartBuilder, hand: Object3D, length = 1): void {
+  const tip = 0.55 * length;
+  const curve = new QuadraticBezierCurve3(new Vector3(0, 0.18, -tip), new Vector3(0, -0.18, 0), new Vector3(0, 0.18, tip));
   b.mesh(hand, new TubeGeometry(curve, 8, 0.05, 4), 'wood');
-  b.box(hand, 'bone', [0.015, 0.015, 1.1], [0, 0.18, 0]); // string
+  b.box(hand, 'bone', [0.015, 0.015, tip * 2], [0, 0.18, 0]); // string
 }
 
 /**

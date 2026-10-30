@@ -86,6 +86,8 @@ export const HAND_ITEMS = [
   'buckler',
   'boardShield',
   'bow',
+  // the bow, longer
+  'longbow',
   'crossbow',
   // two-handed
   'greatsword',
@@ -118,7 +120,7 @@ export type OrbItem = 'orb' | 'skull' | 'lantern' | 'spellbook';
 export type HeavyItem = 'greatsword' | 'maul' | 'greataxe' | 'scythe';
 /** Thrown at the enemy. */
 export type ThrowItem = 'javelin' | 'bomb' | 'throwingAxe';
-export type WeaponItem = Exclude<HandItem, 'none' | 'bow' | 'crossbow' | 'musket' | 'pistol' | OrbItem | ShieldItem>;
+export type WeaponItem = Exclude<HandItem, 'none' | 'bow' | 'longbow' | 'crossbow' | 'musket' | 'pistol' | OrbItem | ShieldItem>;
 export type Hand = 'L' | 'R';
 
 export interface UnitParams {
@@ -226,6 +228,8 @@ export function itemKind(item: HandItem): ItemKind {
     case 'bomb':
     case 'throwingAxe':
       return 'throw';
+    case 'longbow':
+      return 'bow';
     case 'crossbow':
     case 'musket':
       return 'shouldered';
@@ -237,7 +241,7 @@ export function itemKind(item: HandItem): ItemKind {
 export const otherHand = (h: Hand): Hand => (h === 'L' ? 'R' : 'L');
 
 /** A bow (the other hand draws the string), a musket (it steadies the barrel) or a weapon swung in both hands. */
-export const twoHanded = (item: HandItem) => item === 'bow' || item === 'musket' || itemKind(item) === 'heavy';
+export const twoHanded = (item: HandItem) => itemKind(item) === 'bow' || item === 'musket' || itemKind(item) === 'heavy';
 
 /**
  * How far from the lead fist, toward the pommel (the hand's +Y), the other fist grips a

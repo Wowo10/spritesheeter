@@ -92,7 +92,7 @@ const THROWN: Record<ThrowItem, Projectile> = { javelin: 'javelin', bomb: 'bomb'
  */
 export function projectileOf(u: UnitParams): Projectile | null {
   const items = handItems(u);
-  if ([items.L, items.R].some((i) => i === 'bow' || i === 'crossbow')) return 'arrow';
+  if ([items.L, items.R].some((i) => itemKind(i) === 'bow' || i === 'crossbow')) return 'arrow';
   if ([items.L, items.R].some((i) => i === 'musket' || i === 'pistol')) return 'bullet';
   const thrown = (i: HandItem) => (itemKind(i) === 'throw' ? THROWN[i as ThrowItem] : null);
   return thrown(items.R) ?? thrown(items.L);

@@ -94,7 +94,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   if (o.tabard) {
     b.box(spine, p.cloth, [torsoW * 0.62, torsoLen * 0.95, torsoD + 0.03], [0, torsoLen * 0.42, 0]);
   }
-  if ([items.L, items.R].some((i) => i === 'bow' || i === 'crossbow')) buildQuiver(b, spine, torsoLen, torsoD);
+  if ([items.L, items.R].some((i) => itemKind(i) === 'bow' || i === 'crossbow')) buildQuiver(b, spine, torsoLen, torsoD);
 
   // cape joints always exist so poses can set them; they're just empty without a cape
   link(spine, joints.cape, [0, torsoLen - 0.04, -torsoD / 2 - 0.04]);
@@ -171,7 +171,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
         buildShield(b, grip, item as ShieldItem, SHIELD_FOREARM_PITCH, side === 'L' ? 1 : -1, p);
         break;
       case 'bow':
-        buildBow(b, grip);
+        buildBow(b, grip, item === 'longbow' ? 1.45 : 1);
         break;
       case 'shouldered':
         if (item === 'musket') buildMusket(b, grip, p);

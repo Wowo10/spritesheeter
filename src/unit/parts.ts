@@ -81,7 +81,7 @@ export function buildHelmet(b: PartBuilder, head: Object3D, kind: Helmet, fit: H
       break;
     case 'cap':
       buildOpenHelm(b, head, fit, p);
-      b.box(head, p.metal, [s * 0.16, s * 0.42, s * 0.08], [0, cy - s * 0.04, s * 0.56]); // nose guard
+      b.box(head, p.metal, [s * 0.32, s * 0.42, s * 0.08], [0, cy - s * 0.04, s * 0.56]); // nose guard, wide enough to keep its pixel at 32 px
       buildHair(b, head, p.hairStyle, fit, p.hair, true);
       break;
     case 'horned':
@@ -289,23 +289,16 @@ function buildTricorn(b: PartBuilder, head: Object3D, fit: HeadFit): void {
 const HELM_RADIUS = 0.74;
 
 /**
- * Open helms stand well clear of the head box: a shell that only just clears it is a pixel
- * thin at 32 px and loses its pixels to the skin and hair under it.
- */
-const OPEN_HELM_RADIUS = 0.84;
-
-/**
- * Brow band plus a flattened dome, with a rim round the brow. The band encloses the whole
- * upper head box, so its corners can't poke through the way they do through a plain hemisphere.
+ * Brow band plus a flattened dome. The band encloses the whole upper head box, so its
+ * corners can't poke through the way they do through a plain hemisphere.
  */
 function buildOpenHelm(b: PartBuilder, head: Object3D, fit: HeadFit, p: UnitParams): void {
   const s = fit.size;
-  const r = s * OPEN_HELM_RADIUS;
+  const r = s * HELM_RADIUS;
   const bottom = fit.centerY + s * 0.08; // just above the eyes
-  const top = fit.centerY + s * 0.6; // above the head box
+  const top = fit.centerY + s * 0.55; // just above the head box
   b.cylinder(head, p.metal, r, top - bottom, [0, (top + bottom) / 2, 0]);
-  b.cylinder(head, p.metal, r * 1.06, s * 0.1, [0, bottom, 0]); // rim
-  b.dome(head, p.metal, r, [0, top, 0]).scale.y = 0.6;
+  b.dome(head, p.metal, r, [0, top, 0]).scale.y = 0.5;
 }
 
 /**

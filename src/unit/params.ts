@@ -479,6 +479,10 @@ const THROWN = HAND_ITEMS.filter((i) => itemKind(i) === 'throw');
 /** Second weapons: anything swung one-handed. */
 const SIDEARMS = HAND_ITEMS.filter((i) => itemKind(i) === 'chop' && i !== 'scythe');
 
+/** The skins random units were first drawn from; the later ones are drawn last, so every seed keeps its other fields. */
+const FIRST_SKINS: RampName[] = ['skin', 'greenSkin', 'paleSkin'];
+const LATER_SKINS = SKIN_RAMPS.filter((r) => !FIRST_SKINS.includes(r));
+
 export function randomUnit(seed: number): UnitParams {
   const rng = mulberry32(seed);
   const archer = rng() < 0.15;
@@ -491,7 +495,7 @@ export function randomUnit(seed: number): UnitParams {
     armor: pick(rng, ARMORS),
     rightHand: archer ? 'none' : pick(rng, WEAPONS),
     leftHand: archer ? 'bow' : rng() < 0.65 ? pick(rng, OFF_HAND) : pick(rng, SIDEARMS),
-    skin: pick(rng, SKIN_RAMPS),
+    skin: pick(rng, FIRST_SKINS),
     cloth: 'team',
     metal: pick(rng, METAL_RAMPS),
     hair: pick(rng, ['hair', 'dark', 'yellow', 'bone'] as RampName[]),
@@ -533,6 +537,14 @@ export function randomUnit(seed: number): UnitParams {
   if (rng() < 0.3) unit.beard = pick(rng, BEARDS.filter((b) => b !== 'none'));
   if (rng() < (green ? 0.6 : 0.05)) unit.teeth = green ? 'tusks' : 'fangs';
   if (rng() < (green ? 0.5 : 0.1)) unit.ears = rng() < 0.6 ? 'pointed' : 'long';
+  // the later skins, last of all; a night elf has long ears and pale, blue or green hair
+  if (!green && rng() < 0.25) {
+    unit.skin = pick(rng, LATER_SKINS);
+    if (unit.skin === 'nightSkin') {
+      unit.ears = 'long';
+      unit.hair = pick(rng, ['bone', 'blue', 'green'] as RampName[]);
+    }
+  }
   return unit;
 }
 

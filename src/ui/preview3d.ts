@@ -48,10 +48,14 @@ export class Preview3D {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     if (w === 0 || h === 0) return;
+    // browser zoom or another monitor changes it
+    if (this.renderer.getPixelRatio() !== window.devicePixelRatio) this.renderer.setPixelRatio(window.devicePixelRatio);
     this.renderer.setSize(w, h, false);
     this.perspective.aspect = w / h;
     this.perspective.updateProjectionMatrix();
     this.applyOrthoAspect();
+    // resizing cleared the canvas after this frame's render: draw it again before it's shown
+    this.render();
   }
 
   /** Call after configuring `ortho` like a sprite camera: widens it to the viewport aspect and adds margin. */

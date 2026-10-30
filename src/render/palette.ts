@@ -34,13 +34,16 @@ export const RAMPS = {
   fur: ['#2c2824', '#56504a', '#8a8278', '#c4bcb0'],
   tawny: ['#4e3a1e', '#8c6c3c', '#c4a064', '#ead29a'],
   scales: ['#142218', '#2a4230', '#4a6a48', '#7e9a6a'],
+  // more skins: deep brown, and a night elf's dusky violet
+  darkSkin: ['#22120c', '#46261a', '#724230', '#9e664a'],
+  nightSkin: ['#241a40', '#463670', '#7260a6', '#a898d8'],
 } as const satisfies Record<string, readonly [string, string, string, string]>;
 
 export type RampName = keyof typeof RAMPS;
 
 export const RAMP_NAMES = Object.keys(RAMPS) as RampName[];
 
-export const SKIN_RAMPS: RampName[] = ['skin', 'greenSkin', 'paleSkin'];
+export const SKIN_RAMPS: RampName[] = ['skin', 'darkSkin', 'paleSkin', 'greenSkin', 'nightSkin'];
 /** Skins for the undead; kept apart so random units stay among the living. */
 export const UNDEAD_SKIN_RAMPS: RampName[] = ['rotSkin', 'ghost'];
 export const CLOTH_RAMPS: RampName[] = ['team', 'red', 'blue', 'green', 'purple', 'yellow'];

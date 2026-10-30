@@ -21,7 +21,7 @@ import { applyBeastPose, buildBeast, disposeBeast, type Beast } from './unit/bea
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
 import { applyMountedPose, buildMounted, copyMounted, disposeMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, randomMounted, type Mounted, type MountedParams } from './unit/mounted';
 import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
-import { ARMORS, BODIES, CAPES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
+import { ARMORS, BODIES, CAPES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
 import { applyVehiclePose, buildVehicle, disposeVehicle, type Vehicle } from './unit/vehicle';
 import { randomVehicle, VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
@@ -93,6 +93,7 @@ const state = {
 /** Values a shared link may set for fields that take one of a set; see mergeSettings. */
 const UNIT_CHOICES: Record<string, readonly unknown[]> = {
   helmet: HELMETS,
+  face: FACES,
   armor: ARMORS,
   rightHand: HAND_ITEMS,
   leftHand: HAND_ITEMS,
@@ -632,6 +633,7 @@ function humanoidControllers(u: UnitParams, folder: GUI, rider = false): Control
     folder.add(u, 'armThickness', 0.7, 1.5, 0.01).name('arm thickness'),
     folder.add(u, 'legLength', 0.75, 1.3, 0.01).name('leg length'),
     folder.add(u, 'helmet', HELMETS),
+    folder.add(u, 'face', FACES),
     folder.add(u, 'hairStyle', HAIR_STYLES).name('hair style'),
     folder.add(u, 'armor', ARMORS),
   ];

@@ -1,8 +1,25 @@
 import { mulberry32, pick, range } from '../rng';
 import { MAGIC_RAMPS, METAL_RAMPS, SKIN_RAMPS, type RampName } from '../render/palette';
 
-export const HELMETS = ['none', 'cap', 'full', 'horned', 'hood'] as const;
-export const ARMORS = ['none', 'leather', 'chain', 'plate'] as const;
+export const HELMETS = [
+  'none',
+  'cap',
+  'full',
+  'horned',
+  'viking',
+  'hood',
+  'tricorn',
+  'bandana',
+  'wizard',
+  'crown',
+  'strawHat',
+  'featherCap',
+  'plagueMask',
+  'chefHat',
+] as const;
+/** Worn on the face, under or over any headgear. */
+export const FACES = ['none', 'eyepatch'] as const;
+export const ARMORS = ['none', 'leather', 'chain', 'plate', 'robe'] as const;
 export const CAPES = ['none', 'long', 'broad'] as const;
 export const HAIR_STYLES = ['short', 'long', 'afro', 'mohawk', 'bald'] as const;
 /** walk; float: hovers above the ground, legs dangling; shamble: lurches along dragging the right leg. */
@@ -14,37 +31,63 @@ export const HAND_ITEMS = [
   'none',
   // one-handed, swung
   'sword',
+  'sabre',
   'axe',
   'doubleAxe',
   'hammer',
   'mace',
   'club',
   'dagger',
+  'cleaver',
+  'flail',
+  'warhammer',
+  'practiceSword',
+  'boneClub',
+  'hook',
   // tools, also swung
   'pickaxe',
   'shovel',
   'torch',
+  'scythe',
+  'fryingPan',
   // polearms, thrust
   'spear',
   'halberd',
+  'lance',
+  'trident',
+  'glaive',
+  'banner',
   'pitchfork',
+  'broom',
+  'rake',
+  'crook',
+  'fishingRod',
   'staff',
   // floats above an open palm, glowing in the magic colour
   'orb',
+  'skull',
+  'lantern',
+  'spellbook',
   'roundShield',
   'kiteShield',
+  'towerShield',
+  'buckler',
+  'boardShield',
   'bow',
 ] as const;
 
 export type Helmet = (typeof HELMETS)[number];
 export type Armor = (typeof ARMORS)[number];
+export type Face = (typeof FACES)[number];
 export type HandItem = (typeof HAND_ITEMS)[number];
 export type Cape = (typeof CAPES)[number];
 export type HairStyle = (typeof HAIR_STYLES)[number];
 export type Gait = (typeof GAITS)[number];
 export type Body = (typeof BODIES)[number];
-export type ShieldItem = 'roundShield' | 'kiteShield';
-export type WeaponItem = Exclude<HandItem, 'none' | 'bow' | 'orb' | ShieldItem>;
+export type ShieldItem = 'roundShield' | 'kiteShield' | 'towerShield' | 'buckler' | 'boardShield';
+/** Held over the open palm, glowing in the magic colour. */
+export type OrbItem = 'orb' | 'skull' | 'lantern' | 'spellbook';
+export type WeaponItem = Exclude<HandItem, 'none' | 'bow' | OrbItem | ShieldItem>;
 export type Hand = 'L' | 'R';
 
 export interface UnitParams {
@@ -61,6 +104,7 @@ export interface UnitParams {
   armThickness: number;
   legLength: number;
   helmet: Helmet;
+  face: Face;
   armor: Armor;
   rightHand: HandItem;
   leftHand: HandItem;
@@ -92,24 +136,48 @@ export type ItemKind = 'none' | 'chop' | 'thrust' | 'shield' | 'bow' | 'orb';
 export function itemKind(item: HandItem): ItemKind {
   switch (item) {
     case 'sword':
+    case 'sabre':
     case 'axe':
     case 'doubleAxe':
     case 'hammer':
     case 'mace':
     case 'club':
     case 'dagger':
+    case 'cleaver':
+    case 'flail':
+    case 'warhammer':
+    case 'practiceSword':
+    case 'boneClub':
+    case 'hook':
     case 'pickaxe':
     case 'shovel':
     case 'torch':
+    case 'scythe':
+    case 'fryingPan':
       return 'chop';
     case 'spear':
     case 'halberd':
+    case 'lance':
+    case 'trident':
+    case 'glaive':
+    case 'banner':
     case 'pitchfork':
+    case 'broom':
+    case 'rake':
+    case 'crook':
+    case 'fishingRod':
     case 'staff':
       return 'thrust';
     case 'roundShield':
     case 'kiteShield':
+    case 'towerShield':
+    case 'buckler':
+    case 'boardShield':
       return 'shield';
+    case 'skull':
+    case 'lantern':
+    case 'spellbook':
+      return 'orb';
     default:
       return item;
   }
@@ -200,6 +268,7 @@ const BASE: UnitParams = {
   opacity: 1,
   glowEyes: false,
   shadow: false,
+  face: 'none',
 };
 
 export const PRESETS: Record<string, UnitParams> = {
@@ -266,7 +335,7 @@ export const PRESETS: Record<string, UnitParams> = {
   priest: {
     ...BASE,
     helmet: 'none',
-    armor: 'none',
+    armor: 'robe',
     rightHand: 'mace',
     leftHand: 'none',
     hairStyle: 'bald',
@@ -320,10 +389,24 @@ export const PRESETS: Record<string, UnitParams> = {
     gait: 'shamble',
   },
   brute: { ...BASE, bulk: 1.4, headSize: 1.15, shoulderWidth: 1.15, armLength: 1.12, armThickness: 1.2, legLength: 0.9, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'club', leftHand: 'none', skin: 'greenSkin' },
+  pirate: { ...BASE, bulk: 0.95, helmet: 'tricorn', face: 'eyepatch', armor: 'none', rightHand: 'sabre', leftHand: 'none', hairStyle: 'long', hair: 'dark' },
+  monk: { ...BASE, bulk: 0.95, helmet: 'none', armor: 'robe', rightHand: 'crook', leftHand: 'none', hairStyle: 'bald', magic: 'holy' },
 };
 
-const MAIN_HAND: HandItem[] = ['sword', 'axe', 'doubleAxe', 'hammer', 'mace', 'club', 'spear', 'halberd', 'sword', 'axe', 'pickaxe'];
-const OFF_HAND: HandItem[] = ['roundShield', 'kiteShield', 'roundShield', 'kiteShield', 'none', 'none', 'sword', 'axe', 'dagger', 'torch', 'orb'];
+/** Everything that's swung or thrust. */
+const WEAPONS = HAND_ITEMS.filter((i) => itemKind(i) === 'chop' || itemKind(i) === 'thrust');
+/** What an off hand holds when it isn't a second weapon. */
+const OFF_HAND: HandItem[] = [
+  ...HAND_ITEMS.filter((i) => itemKind(i) === 'shield'),
+  'roundShield',
+  'kiteShield',
+  'none',
+  'none',
+  'torch',
+  ...HAND_ITEMS.filter((i) => itemKind(i) === 'orb'),
+];
+/** Second weapons: anything swung one-handed. */
+const SIDEARMS = HAND_ITEMS.filter((i) => itemKind(i) === 'chop' && i !== 'scythe');
 
 export function randomUnit(seed: number): UnitParams {
   const rng = mulberry32(seed);
@@ -335,8 +418,8 @@ export function randomUnit(seed: number): UnitParams {
     headSize: round2(range(rng, 0.9, 1.2)),
     helmet: pick(rng, HELMETS),
     armor: pick(rng, ARMORS),
-    rightHand: archer ? 'none' : pick(rng, MAIN_HAND),
-    leftHand: archer ? 'bow' : pick(rng, OFF_HAND),
+    rightHand: archer ? 'none' : pick(rng, WEAPONS),
+    leftHand: archer ? 'bow' : rng() < 0.65 ? pick(rng, OFF_HAND) : pick(rng, SIDEARMS),
     skin: pick(rng, SKIN_RAMPS),
     cloth: 'team',
     metal: pick(rng, METAL_RAMPS),
@@ -356,6 +439,7 @@ export function randomUnit(seed: number): UnitParams {
     opacity: 1,
     glowEyes: false,
     shadow: false,
+    face: rng() < 0.1 ? 'eyepatch' : 'none',
   };
 }
 

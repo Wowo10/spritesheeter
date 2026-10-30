@@ -2,8 +2,8 @@ import { CylinderGeometry, Group, IcosahedronGeometry, Mesh, Object3D } from 'th
 import { JOINTS, type JointName, type Pose } from '../anim/types';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
-import { bodyDims, handItems, itemKind, type ShieldItem, type UnitParams, type WeaponItem } from './params';
-import { buildBow, buildCape, buildHelmet, buildOrb, buildQuiver, buildShield, buildWeapon, PartBuilder } from './parts';
+import { bodyDims, handItems, itemKind, type OrbItem, type ShieldItem, type UnitParams, type WeaponItem } from './params';
+import { buildBow, buildCape, buildFace, buildHelmet, buildOrb, buildQuiver, buildShield, buildWeapon, PartBuilder } from './parts';
 
 const DEG = Math.PI / 180;
 
@@ -34,18 +34,22 @@ interface Outfit {
   shin: RampName;
   tabard: boolean;
   pauldrons: boolean;
+  /** Cloth down to the ankles: a flared skirt over the thighs and wide sleeves. */
+  robe: boolean;
 }
 
 function outfit(p: UnitParams): Outfit {
   switch (p.armor) {
     case 'none':
-      return { torso: p.cloth, pelvis: p.cloth, upperArm: p.skin, forearm: p.skin, thigh: 'leather', shin: 'leather', tabard: false, pauldrons: false };
+      return { torso: p.cloth, pelvis: p.cloth, upperArm: p.skin, forearm: p.skin, thigh: 'leather', shin: 'leather', tabard: false, pauldrons: false, robe: false };
     case 'leather':
-      return { torso: 'leather', pelvis: p.cloth, upperArm: p.skin, forearm: 'leather', thigh: p.cloth, shin: 'leather', tabard: false, pauldrons: false };
+      return { torso: 'leather', pelvis: p.cloth, upperArm: p.skin, forearm: 'leather', thigh: p.cloth, shin: 'leather', tabard: false, pauldrons: false, robe: false };
     case 'chain':
-      return { torso: p.metal, pelvis: p.cloth, upperArm: p.metal, forearm: 'leather', thigh: 'leather', shin: 'leather', tabard: true, pauldrons: false };
+      return { torso: p.metal, pelvis: p.cloth, upperArm: p.metal, forearm: 'leather', thigh: 'leather', shin: 'leather', tabard: true, pauldrons: false, robe: false };
     case 'plate':
-      return { torso: p.metal, pelvis: p.cloth, upperArm: p.metal, forearm: p.metal, thigh: p.metal, shin: p.metal, tabard: true, pauldrons: true };
+      return { torso: p.metal, pelvis: p.cloth, upperArm: p.metal, forearm: p.metal, thigh: p.metal, shin: p.metal, tabard: true, pauldrons: true, robe: false };
+    case 'robe':
+      return { torso: p.cloth, pelvis: p.cloth, upperArm: p.cloth, forearm: p.cloth, thigh: p.cloth, shin: p.cloth, tabard: false, pauldrons: false, robe: true };
   }
 }
 
@@ -70,6 +74,11 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   const { hips, spine } = joints;
   link(body, hips, [0, hipHeight, 0]);
   b.box(hips, o.pelvis, [hipW * 0.9, 0.16, torsoD * 0.95], [0, 0, 0]);
+  if (o.robe && p.body !== 'ghost') {
+    // flares from the waist to the knees; the cloth-covered shins below read as its hem
+    const skirt = thigh * 0.95;
+    b.taper(hips, p.cloth, hipW * 0.6, hipW * 0.8, skirt, [0, 0.04 - skirt / 2, 0]).scale.z = torsoD / hipW;
+  }
 
   link(hips, spine, [0, 0.06, 0]);
   b.box(spine, o.torso, [(hipW + torsoW) / 2 * 0.88, torsoLen * 0.5, torsoD * 0.92], [0, torsoLen * 0.25, 0]);
@@ -116,6 +125,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   const headCenter = 0.05 + head / 2;
   b.box(joints.head, p.skin, [head, head * 1.05, head], [0, headCenter, 0]);
   buildHelmet(b, joints.head, p.helmet, { size: head, centerY: headCenter }, p);
+  buildFace(b, joints.head, p.face, { size: head, centerY: headCenter });
   if (p.glowEyes) {
     for (const side of [1, -1]) b.box(joints.head, p.magic, [head * 0.2, head * 0.13, 0.03], [side * head * 0.22, headCenter + head * 0.05, head / 2 + 0.01]);
   }
@@ -130,6 +140,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     if (o.pauldrons) b.box(shoulder, p.metal, [armT * 1.6, armT * 0.9, armT * 1.6], [0, 0, 0]);
     link(shoulder, elbow, [0, -upperArm, 0]);
     b.box(elbow, o.forearm, [armT * 0.92, forearm, armT * 0.92], [0, -forearm / 2, 0]);
+    if (o.robe) b.box(elbow, p.cloth, [armT * 1.4, forearm * 0.45, armT * 1.4], [0, -forearm * 0.72, 0]); // bell sleeve
     link(elbow, hand, [0, -forearm, 0]);
     b.box(hand, p.skin, [armT * 1.15, armT * 1.15, armT * 1.15], [0, -armT * 0.4, 0]);
 
@@ -149,7 +160,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
         buildBow(b, grip);
         break;
       case 'orb':
-        buildOrb(b, grip, p);
+        buildOrb(b, grip, item as OrbItem, p);
         break;
     }
   }

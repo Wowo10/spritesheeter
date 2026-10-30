@@ -30,10 +30,10 @@ Drag the divider to resize the panels. Double-click it to reset.
 
 Pick a **type**: `humanoid`, `beast` (four-legged animals, see [Beasts](#beasts)), `mounted` (a humanoid riding a beast, see [Mounted units](#mounted-units)) or `vehicle` (siege engines, see [Vehicles](#vehicles)).
 
-Pick a **preset** (swordsman, axeman, spearman, archer, knight, berserker, duelist, shieldbearer, worker, militia, mage, warlock, priest, shaman, guard, brute, ghost, zombie) or **🎲 randomize**. Typing a **seed** gives a repeatable random unit. You can then tweak:
+Pick a **preset** (swordsman, axeman, spearman, archer, knight, berserker, duelist, shieldbearer, worker, militia, mage, warlock, priest, shaman, guard, brute, pirate, monk, ghost, zombie) or **🎲 randomize**. Typing a **seed** gives a repeatable random unit. You can then tweak:
 
 - **Body:** height, bulk, head size, torso, shoulders, arm and leg proportions
-- **Gear:** helmet, hair style, armour, cape, and an item in each hand (swords, axes, hammers, polearms, tools, torch, staff, magic orb, shields, bow). A bow takes both hands.
+- **Gear:** headgear (cap, full helm, horned or Viking helm, hood, pirate tricorn or bandana, wizard's hat, crown, straw hat, feathered cap, plague doctor mask, chef's hat), a face accessory (an eyepatch) that goes with any headgear, hair style, armour (none, leather, chain, plate or a robe), cape, and an item in each hand (swords, sabres, a practice sword, axes, hammers, a warhammer, a flail, a cleaver, a bone club, a pirate hook, polearms (spear, halberd, lance, trident, glaive, war banner), tools (pickaxe, shovel, scythe, frying pan, pitchfork, broom, rake, shepherd's crook, fishing rod), torch, staff, a magic orb, floating skull, lantern or open spellbook glowing in the magic colour, round, kite, tower, buckler or wooden board shields, bow). A bow takes both hands.
 - **Colours:** skin, cloth, metal, hair, magic glow and cape. Every colour comes from a palette ramp.
 - **Undead:**
   - **gait:** `walk`, `float` (hovers off the ground with the legs dangling) or `shamble` (lurches along dragging one leg, arms held out)
@@ -60,7 +60,7 @@ Beasts fill the same sheet rows as humanoids: `attack` is a bite, `cast` is a ro
 
 ### Mounted units
 
-With **type** set to `mounted`, a humanoid rides a beast. Presets: knight (on an armoured horse), wolfRider (an orc on a big wolf), griffinRider (a spearman on a flying griffin). **🎲 randomize** puts a random humanoid on a random horse, wolf, bear, boar or lion.
+With **type** set to `mounted`, a humanoid rides a beast. Presets: knight (with a lance, on an armoured horse), wolfRider (an orc on a big wolf), griffinRider (a spearman on a flying griffin). **🎲 randomize** puts a random humanoid on a random horse, wolf, bear, boar or lion.
 
 The **Rider** and **Mount** folders each start with a preset, to put any humanoid preset on any beast preset, followed by the usual controls for that unit. A few things are fixed by riding:
 

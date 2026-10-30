@@ -24,7 +24,7 @@ const SEAT = 0.06;
 export const MOUNTED_PRESETS: Record<string, MountedParams> = {
   knight: {
     seed: 1,
-    rider: PRESETS.knight,
+    rider: { ...PRESETS.knight, rightHand: 'lance' },
     mount: { ...BEAST_PRESETS.horse, barding: 'armor', hide: 'bone', belly: 'bone', metal: 'gold' },
   },
   wolfRider: {

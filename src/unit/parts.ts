@@ -1,6 +1,7 @@
 import {
   BoxGeometry,
   BufferGeometry,
+  CatmullRomCurve3,
   ConeGeometry,
   CylinderGeometry,
   ExtrudeGeometry,
@@ -15,7 +16,7 @@ import {
 } from 'three';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
-import type { Cape, HairStyle, Helmet, ShieldItem, UnitParams, WeaponItem } from './params';
+import { bodyDims, type Cape, type Face, type HairStyle, type Helmet, type OrbItem, type ShieldItem, type UnitParams, type WeaponItem } from './params';
 
 type V3 = [number, number, number];
 
@@ -90,6 +91,126 @@ export function buildHelmet(b: PartBuilder, head: Object3D, kind: Helmet, fit: H
       b.box(head, p.cloth, [s * 1.18, s * 1.12, s * 1.06], [0, cy + s * 0.06, -s * 0.12]);
       b.box(head, p.cloth, [s * 0.7, s * 0.3, s * 0.5], [0, cy - s * 0.35, -s * 0.55], [-30, 0, 0]); // hood tail
       break;
+    case 'tricorn':
+      buildTricorn(b, head, fit);
+      buildHair(b, head, p.hairStyle, fit, p.hair, true);
+      break;
+    case 'wizard':
+      // a broad brim and a tall cone, its tip bent back
+      b.cylinder(head, p.cloth, s * 1.0, s * 0.06, [0, cy + s * 0.45, 0], undefined, 10);
+      b.cylinder(head, 'yellow', s * 0.78, s * 0.1, [0, cy + s * 0.53, 0]); // band
+      b.cone(head, p.cloth, s * 0.76, s * 0.9, [0, cy + s * 0.93, 0]);
+      b.cone(head, p.cloth, s * 0.3, s * 0.55, [0, cy + s * 1.42, -s * 0.12], [-35, 0, 0]);
+      buildHair(b, head, p.hairStyle, fit, p.hair, true);
+      break;
+    case 'crown': {
+      // a gold ring with points, sitting on the hair; open-topped so the hair shows inside
+      const r = s * 0.8;
+      const top = cy + s * 0.64;
+      b.mesh(head, new CylinderGeometry(r, r * 0.96, s * 0.22, 8, 1, true), 'gold', [0, top - s * 0.11, 0]);
+      for (let i = 0; i < 8; i++) {
+        const a = ((i + 0.5) / 8) * Math.PI * 2;
+        b.cone(head, 'gold', s * 0.1, s * 0.22, [r * Math.sin(a), top + s * 0.1, r * Math.cos(a)]);
+      }
+      b.box(head, 'red', [s * 0.13, s * 0.13, s * 0.05], [0, top - s * 0.1, r + s * 0.01], [0, 0, 45]); // gem
+      buildHair(b, head, p.hairStyle, fit, p.hair, false);
+      break;
+    }
+    case 'bandana':
+      // tied tight over the top of the head, the knot and its ends at the back
+      b.box(head, p.cloth, [s * 1.08, s * 0.42, s * 1.08], [0, cy + s * 0.36, 0]);
+      b.box(head, p.cloth, [s * 0.22, s * 0.2, s * 0.16], [0, cy + s * 0.3, -s * 0.58]);
+      for (const side of [1, -1]) b.box(head, p.cloth, [s * 0.13, s * 0.42, s * 0.05], [side * s * 0.09, cy + s * 0.04, -s * 0.62], [0, 0, side * 15]);
+      buildHair(b, head, p.hairStyle, fit, p.hair, true);
+      break;
+    case 'strawHat':
+      b.cylinder(head, 'tawny', s * 1.1, s * 0.05, [0, cy + s * 0.42, 0], undefined, 10);
+      b.taper(head, 'tawny', s * 0.55, s * 0.76, s * 0.35, [0, cy + s * 0.6, 0]);
+      b.cylinder(head, 'leather', s * 0.74, s * 0.08, [0, cy + s * 0.48, 0]); // band
+      buildHair(b, head, p.hairStyle, fit, p.hair, true);
+      break;
+    case 'viking':
+      // no horns: an open helm with a spectacle guard round the eyes and mail over the neck
+      buildOpenHelm(b, head, fit, p);
+      b.box(head, p.metal, [s * 0.14, s * 0.38, s * 0.08], [0, cy - s * 0.04, s * 0.56]); // nose
+      for (const side of [1, -1]) {
+        b.box(head, p.metal, [s * 0.36, s * 0.08, s * 0.08], [side * s * 0.24, cy - s * 0.13, s * 0.55]);
+        b.box(head, p.metal, [s * 0.08, s * 0.3, s * 0.08], [side * s * 0.44, cy - s * 0.03, s * 0.53]);
+      }
+      b.box(head, p.metal, [s * 1.2, s * 0.5, s * 0.3], [0, cy - s * 0.22, -s * 0.45]);
+      buildHair(b, head, p.hairStyle, fit, p.hair, true);
+      break;
+    case 'featherCap':
+      // a soft cap with its brim turned up in front and a long feather swept back
+      b.box(head, p.cloth, [s * 1.12, s * 0.3, s * 1.12], [0, cy + s * 0.48, 0]);
+      b.box(head, p.cloth, [s * 1.0, s * 0.06, s * 0.4], [0, cy + s * 0.36, s * 0.64], [-20, 0, 0]);
+      b.box(head, 'bone', [s * 0.05, s * 0.9, s * 0.14], [s * 0.5, cy + s * 0.78, -s * 0.22], [-40, 0, 0]);
+      buildHair(b, head, p.hairStyle, fit, p.hair, true);
+      break;
+    case 'plagueMask':
+      // a pale beaked mask with dark goggles, under a black wide-brimmed hat
+      b.box(head, 'bone', [s * 1.04, s * 0.8, s * 0.1], [0, cy - s * 0.05, s * 0.52]);
+      for (const x of [0.22, -0.22]) b.box(head, 'dark', [s * 0.24, s * 0.2, s * 0.06], [x * s, cy + s * 0.08, s * 0.58]);
+      b.cone(head, 'bone', s * 0.2, s * 0.7, [0, cy - s * 0.27, s * 0.88], [110, 0, 0]);
+      b.cylinder(head, 'dark', s * 1.0, s * 0.06, [0, cy + s * 0.45, 0], undefined, 10);
+      b.cylinder(head, 'dark', s * 0.74, s * 0.4, [0, cy + s * 0.68, 0]);
+      buildHair(b, head, p.hairStyle, fit, p.hair, true);
+      break;
+    case 'chefHat':
+      // a tall white toque, puffed out at the top
+      b.cylinder(head, 'bone', s * 0.76, s * 0.2, [0, cy + s * 0.5, 0]);
+      b.taper(head, 'bone', s * 0.85, s * 0.72, s * 0.75, [0, cy + s * 0.95, 0]);
+      b.dome(head, 'bone', s * 0.88, [0, cy + s * 1.3, 0]).scale.y = 0.4;
+      buildHair(b, head, p.hairStyle, fit, p.hair, true);
+      break;
+  }
+}
+
+/**
+ * Face accessories, built after the headgear. A full helm or a mask simply covers them.
+ * The eyepatch sits over the left eye (+X), standing out far enough to cover a glowing eye,
+ * its strap a thin slab through the head that shows as a line where it crosses the faces.
+ */
+export function buildFace(b: PartBuilder, head: Object3D, kind: Face, fit: HeadFit): void {
+  const s = fit.size;
+  const cy = fit.centerY;
+  switch (kind) {
+    case 'none':
+      break;
+    case 'eyepatch':
+      b.box(head, 'dark', [s * 0.26, s * 0.22, 0.03], [s * 0.22, cy + s * 0.05, s / 2 + 0.025]);
+      // rising from the patch across the forehead to above the other ear
+      b.box(head, 'dark', [s * 1.04, s * 0.06, s * 1.04], [0, cy + s * 0.13, 0], [0, 0, -20]);
+      break;
+  }
+}
+
+/** How far the tricorn's turned-up brim leans out from the head, in degrees. */
+const TRICORN_LEAN = 20;
+
+/**
+ * Pirate hat: a low crown ringed by a brim turned up into three walls, one corner
+ * pointing forward, the wall tops trimmed in gold. The walls stand just outside the
+ * head box's corners, so the head never pokes through.
+ */
+function buildTricorn(b: PartBuilder, head: Object3D, fit: HeadFit): void {
+  const s = fit.size;
+  const cy = fit.centerY;
+  const base = cy + s * 0.25;
+  const r = s * 0.66; // from the centre to the middle of each wall
+  const h = s * 0.45;
+  const lean = TRICORN_LEAN * DEG;
+  const length = 2 * Math.sqrt(3) * (r + (h / 2) * Math.sin(lean)); // a side of the triangle at mid-height
+  b.dome(head, 'dark', s * HELM_RADIUS, [0, cy + s * 0.5, 0]).scale.y = 0.5;
+  // walls face back, front-left and front-right
+  for (const angle of [180, 60, -60]) {
+    const wall = new Object3D();
+    wall.position.set(r * Math.sin(angle * DEG), base, r * Math.cos(angle * DEG));
+    wall.rotation.y = angle * DEG; // local +Z points out of the hat
+    head.add(wall);
+    const up = (y: number): V3 => [0, y * Math.cos(lean), y * Math.sin(lean)];
+    b.box(wall, 'dark', [length, h, s * 0.08], up(h / 2), [TRICORN_LEAN, 0, 0]);
+    b.box(wall, 'gold', [length, s * 0.07, s * 0.1], up(h), [TRICORN_LEAN, 0, 0]);
   }
 }
 
@@ -143,11 +264,19 @@ function buildHair(b: PartBuilder, head: Object3D, style: HairStyle, fit: HeadFi
   }
 }
 
+/** How far a pole reaches past the fist to where its head starts; sets the length of every polearm. */
+const POLE = 0.95;
+/** How much of a pole sticks out behind the fist. */
+const BUTT = 0.3;
+
 /**
  * Weapons hang from the grip along -Y (the continuation of the forearm), edges facing -Z:
  * that side leads in a chop and faces away from the body in the raised resting pose.
+ * Poles run from BUTT behind the fist to -POLE, where their heads go.
  */
 export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p: UnitParams): void {
+  const pole: [number, V3] = [BUTT + POLE, [0, (BUTT - POLE) / 2, 0]]; // length and centre
+  const head = -POLE;
   switch (kind) {
     case 'sword':
       b.box(hand, 'leather', [0.05, 0.16, 0.05], [0, 0, 0]);
@@ -156,6 +285,21 @@ export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p:
       // chunkier than real so it survives downscaling from every direction
       b.box(hand, 'steel', [0.1, 0.62, 0.11], [0, -0.43, 0]);
       break;
+    case 'sabre': {
+      b.box(hand, 'leather', [0.05, 0.16, 0.05], [0, 0, 0]);
+      b.box(hand, p.metal, [0.08, 0.05, 0.22], [0, -0.1, -0.03]); // guard
+      // knuckle bow on the edge side, from the guard round to the pommel
+      b.box(hand, p.metal, [0.04, 0.24, 0.04], [0, 0, -0.12]);
+      b.box(hand, p.metal, [0.05, 0.05, 0.16], [0, 0.1, -0.05]);
+      // drawn with x along the hand's Z: the convex edge leads, the tip curls back toward the spine
+      const blade = new Shape();
+      blade.moveTo(-0.055, -0.1);
+      blade.quadraticCurveTo(-0.07, -0.6, 0.13, -0.8);
+      blade.quadraticCurveTo(0.07, -0.5, 0.055, -0.1);
+      blade.closePath();
+      b.mesh(hand, new ExtrudeGeometry(blade, { depth: 0.08, bevelEnabled: false }), 'steel', [0.04, 0, 0], [0, -90, 0]);
+      break;
+    }
     case 'axe':
       b.box(hand, 'wood', [0.075, 0.85, 0.075], [0, -0.26, 0]);
       b.box(hand, 'steel', [0.07, 0.3, 0.22], [0, -0.56, -0.12]);
@@ -189,6 +333,63 @@ export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p:
       b.box(hand, p.metal, [0.16, 0.04, 0.06], [0, -0.08, 0]);
       b.box(hand, 'steel', [0.08, 0.3, 0.09], [0, -0.25, 0]);
       break;
+    case 'cleaver':
+      b.box(hand, 'wood', [0.06, 0.2, 0.06], [0, 0, 0]);
+      // a broad slab hung off the handle line, so the edge sticks well out in front
+      b.box(hand, 'steel', [0.05, 0.42, 0.26], [0, -0.35, -0.06]);
+      b.box(hand, 'dark', [0.06, 0.05, 0.05], [0, -0.5, 0.02]); // hanging hole
+      break;
+    case 'flail': {
+      b.box(hand, 'wood', [0.07, 0.4, 0.07], [0, -0.1, 0]);
+      b.box(hand, p.metal, [0.09, 0.05, 0.09], [0, -0.31, 0]);
+      // the chain holds straight, so the ball reads at the end of the swing
+      for (let i = 0; i < 3; i++) b.box(hand, p.metal, [0.04, 0.07, 0.04], [0, -0.38 - i * 0.08, 0], [0, i * 45, 0]);
+      const ball = -0.68;
+      b.mesh(hand, new IcosahedronGeometry(0.1, 0), p.metal, [0, ball, 0]);
+      const spikes: [V3, V3][] = [
+        [[0.13, 0, 0], [0, 0, -90]],
+        [[-0.13, 0, 0], [0, 0, 90]],
+        [[0, 0, 0.13], [90, 0, 0]],
+        [[0, 0, -0.13], [-90, 0, 0]],
+        [[0, -0.13, 0], [180, 0, 0]],
+      ];
+      for (const [[x, y, z], rot] of spikes) b.cone(hand, 'steel', 0.035, 0.1, [x, ball + y, z], rot);
+      break;
+    }
+    case 'warhammer':
+      b.box(hand, 'wood', [0.075, 0.85, 0.075], [0, -0.26, 0]);
+      b.box(hand, p.metal, [0.14, 0.14, 0.18], [0, -0.6, -0.06]); // striking face leads
+      b.cone(hand, p.metal, 0.05, 0.22, [0, -0.6, 0.14], [90, 0, 0]); // spike on the back
+      b.cone(hand, 'steel', 0.04, 0.12, [0, -0.73, 0], [180, 0, 0]);
+      break;
+    case 'practiceSword':
+      // the sword's shape, all wood, blunt
+      b.box(hand, 'leather', [0.05, 0.16, 0.05], [0, 0, 0]);
+      b.box(hand, 'wood', [0.07, 0.06, 0.07], [0, 0.1, 0]);
+      b.box(hand, 'wood', [0.22, 0.06, 0.08], [0, -0.1, 0]);
+      b.box(hand, 'wood', [0.1, 0.6, 0.1], [0, -0.42, 0]);
+      break;
+    case 'boneClub':
+      // a great thigh bone: a knob behind the fist, a double knuckle on the striking end
+      b.taper(hand, 'bone', 0.05, 0.065, 0.62, [0, -0.28, 0]);
+      b.mesh(hand, new SphereGeometry(0.07, 6, 4), 'bone', [0, 0.1, 0]);
+      for (const z of [1, -1]) b.mesh(hand, new SphereGeometry(0.09, 6, 4), 'bone', [0, -0.62, z * 0.07]);
+      break;
+    case 'hook': {
+      // a cuff over the fist, sized to it, so the hand never shows through
+      const fist = bodyDims(p).armT * 1.15;
+      b.cylinder(hand, 'wood', fist * 0.78, fist * 1.3, [0, 0, 0]);
+      b.cylinder(hand, p.metal, fist * 0.82, fist * 0.2, [0, -fist * 0.6, 0]);
+      const curve = new CatmullRomCurve3([
+        new Vector3(0, -fist * 0.6, 0),
+        new Vector3(0, -0.26, 0),
+        new Vector3(0, -0.37, -0.06),
+        new Vector3(0, -0.33, -0.15),
+        new Vector3(0, -0.24, -0.15),
+      ]);
+      b.mesh(hand, new TubeGeometry(curve, 10, 0.035, 5), 'steel');
+      break;
+    }
     case 'pickaxe':
       b.box(hand, 'wood', [0.07, 0.8, 0.07], [0, -0.24, 0]);
       b.box(hand, 'steel', [0.07, 0.08, 0.36], [0, -0.6, 0]);
@@ -207,39 +408,176 @@ export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p:
       b.cone(hand, 'fire', 0.1, 0.28, [0, -0.56, 0], [180, 0, 0]);
       b.box(hand, 'fire', [0.12, 0.1, 0.12], [0, -0.47, 0], [0, 45, 0]);
       break;
+    case 'scythe': {
+      b.box(hand, 'wood', [0.065, pole[0], 0.065], pole[1]);
+      // drawn like the sabre's blade: x along the hand's Z, sweeping forward from the end of
+      // the shaft with the point curling back toward the hand
+      const blade = new Shape();
+      blade.moveTo(0.05, head - 0.06);
+      blade.quadraticCurveTo(-0.3, head - 0.14, -0.62, head + 0.16);
+      blade.quadraticCurveTo(-0.3, head, 0.05, head + 0.04);
+      blade.closePath();
+      b.mesh(hand, new ExtrudeGeometry(blade, { depth: 0.06, bevelEnabled: false }), 'steel', [0.03, 0, 0], [0, -90, 0]);
+      break;
+    }
+    case 'fryingPan':
+      b.box(hand, 'wood', [0.05, 0.34, 0.05], [0, -0.09, 0]);
+      // the flat bottom leads, for a good clang
+      b.cylinder(hand, 'dark', 0.2, 0.06, [0, -0.45, 0], [90, 0, 0], 10);
+      b.cylinder(hand, 'steel', 0.16, 0.02, [0, -0.45, 0.025], [90, 0, 0], 10);
+      break;
     case 'spear':
-      b.box(hand, 'wood', [0.07, 1.75, 0.07], [0, -0.38, 0]);
-      b.cone(hand, 'steel', 0.09, 0.3, [0, -1.39, 0], [180, 0, 0]);
+      b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
+      b.cone(hand, 'steel', 0.09, 0.3, [0, head - 0.13, 0], [180, 0, 0]);
       break;
     case 'halberd':
-      b.box(hand, 'wood', [0.07, 1.75, 0.07], [0, -0.38, 0]);
-      b.box(hand, 'steel', [0.06, 0.3, 0.22], [0, -1.05, -0.13]); // axe blade
-      b.box(hand, 'steel', [0.05, 0.06, 0.12], [0, -1.05, 0.08]); // back hook
-      b.cone(hand, 'steel', 0.07, 0.26, [0, -1.37, 0], [180, 0, 0]);
+      b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
+      b.box(hand, 'steel', [0.06, 0.3, 0.22], [0, head + 0.2, -0.13]); // axe blade
+      b.box(hand, 'steel', [0.05, 0.06, 0.12], [0, head + 0.2, 0.08]); // back hook
+      b.cone(hand, 'steel', 0.07, 0.26, [0, head - 0.11, 0], [180, 0, 0]);
+      break;
+    case 'lance': {
+      // a little longer than the other poles
+      const shaft = POLE + 0.1;
+      b.box(hand, 'wood', [0.07, 0.4, 0.07], [0, 0.15, 0]); // butt
+      // painted shaft tapering away from the hand, behind a cone guard that covers the fist
+      b.taper(hand, p.cloth, 0.065, 0.025, shaft, [0, -0.16 - shaft / 2, 0]);
+      b.cone(hand, p.metal, 0.13, 0.16, [0, -0.16, 0], [180, 0, 0]);
+      b.cone(hand, 'steel', 0.04, 0.16, [0, -0.24 - shaft, 0], [180, 0, 0]);
+      break;
+    }
+    case 'broom':
+      b.taper(hand, 'wood', 0.035, 0.035, pole[0], pole[1]);
+      b.box(hand, 'leather', [0.1, 0.06, 0.1], [0, head, 0]); // binding
+      // straw flaring out from the binding
+      b.taper(hand, 'tawny', 0.06, 0.14, 0.4, [0, head - 0.22, 0]);
       break;
     case 'pitchfork':
-      b.box(hand, 'wood', [0.065, 1.5, 0.065], [0, -0.3, 0]);
-      b.box(hand, 'steel', [0.28, 0.05, 0.06], [0, -1.06, 0]);
-      for (const x of [-0.12, 0, 0.12]) b.box(hand, 'steel', [0.04, 0.28, 0.04], [x, -1.22, 0]);
+      b.box(hand, 'wood', [0.065, pole[0], 0.065], pole[1]);
+      b.box(hand, 'steel', [0.28, 0.05, 0.06], [0, head, 0]);
+      for (const x of [-0.12, 0, 0.12]) b.box(hand, 'steel', [0.04, 0.28, 0.04], [x, head - 0.16, 0]);
+      break;
+    case 'trident':
+      b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
+      b.box(hand, p.metal, [0.28, 0.05, 0.07], [0, head, 0]);
+      // barbed prongs, the middle one longest
+      for (const x of [-0.12, 0, 0.12]) {
+        const len = x === 0 ? 0.3 : 0.22;
+        b.box(hand, p.metal, [0.045, len, 0.045], [x, head - len / 2, 0]);
+        b.cone(hand, p.metal, 0.045, 0.1, [x, head - len - 0.05, 0], [180, 0, 0]);
+      }
+      break;
+    case 'glaive': {
+      b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
+      b.box(hand, p.metal, [0.1, 0.08, 0.1], [0, head + 0.08, 0]); // socket
+      // a long single-edged blade, drawn like the sabre's: edge leading, tip curling back
+      const top = head + 0.08;
+      const blade = new Shape();
+      blade.moveTo(-0.06, top);
+      blade.quadraticCurveTo(-0.08, top - 0.38, 0.1, top - 0.55);
+      blade.quadraticCurveTo(0.07, top - 0.3, 0.05, top);
+      blade.closePath();
+      b.mesh(hand, new ExtrudeGeometry(blade, { depth: 0.07, bevelEnabled: false }), 'steel', [0.035, 0, 0], [0, -90, 0]);
+      break;
+    }
+    case 'banner':
+      b.box(hand, 'wood', [0.06, pole[0], 0.06], pole[1]);
+      b.box(hand, 'wood', [0.44, 0.04, 0.04], [0, head, 0]); // crossbar
+      b.cone(hand, p.metal, 0.05, 0.14, [0, head - 0.09, 0], [180, 0, 0]); // finial
+      // team-coloured cloth hanging from the crossbar, toward the hand, with a swallowtail
+      b.box(hand, p.cloth, [0.36, 0.38, 0.03], [0, head + 0.21, -0.045]);
+      for (const x of [-0.11, 0.11]) b.box(hand, p.cloth, [0.14, 0.12, 0.03], [x, head + 0.46, -0.045]);
+      break;
+    case 'crook': {
+      b.taper(hand, 'wood', 0.035, 0.035, pole[0], pole[1]);
+      // the hook curls over forward and back down
+      const curve = new CatmullRomCurve3([
+        new Vector3(0, head + 0.05, 0),
+        new Vector3(0, head - 0.18, 0),
+        new Vector3(0, head - 0.3, -0.08),
+        new Vector3(0, head - 0.26, -0.2),
+        new Vector3(0, head - 0.14, -0.22),
+      ]);
+      b.mesh(hand, new TubeGeometry(curve, 10, 0.035, 5), 'wood');
+      break;
+    }
+    case 'fishingRod': {
+      // thinner and a little longer than a pole, with a reel just past the fist
+      const rod = BUTT + POLE + 0.2;
+      const tip = BUTT - rod;
+      b.taper(hand, 'wood', 0.035, 0.015, rod, [0, BUTT - rod / 2, 0]);
+      b.cylinder(hand, p.metal, 0.05, 0.04, [0, -0.12, 0.06], [0, 0, 90]);
+      // the line hangs back from the tip, a little forward of the rod, with a float on it
+      const line = 0.3;
+      const a = 15 * DEG;
+      b.box(hand, 'bone', [0.012, line, 0.012], [0, tip + (line / 2) * Math.cos(a), (-line / 2) * Math.sin(a)], [-15, 0, 0]);
+      b.mesh(hand, new SphereGeometry(0.045, 6, 4), 'red', [0, tip + line * Math.cos(a), -line * Math.sin(a)]);
+      break;
+    }
+    case 'rake':
+      b.box(hand, 'wood', [0.065, pole[0], 0.065], pole[1]);
+      b.box(hand, 'wood', [0.36, 0.06, 0.06], [0, head, 0]);
+      // teeth stick out forward, square to the handle
+      for (let x = -0.14; x <= 0.15; x += 0.07) b.box(hand, 'steel', [0.035, 0.035, 0.13], [x, head, -0.08]);
       break;
     case 'staff':
-      b.taper(hand, 'wood', 0.05, 0.04, 1.5, [0, -0.3, 0]);
-      b.box(hand, p.metal, [0.12, 0.06, 0.12], [0, -1.06, 0]);
+      b.taper(hand, 'wood', 0.05, 0.04, pole[0], pole[1]);
+      b.box(hand, p.metal, [0.12, 0.06, 0.12], [0, head, 0]);
       // orb in the team colour, so a mage reads as belonging to its player
-      b.mesh(hand, new SphereGeometry(0.11, 8, 6), p.cloth, [0, -1.18, 0]);
+      b.mesh(hand, new SphereGeometry(0.11, 8, 6), p.cloth, [0, head - 0.12, 0]);
       break;
   }
 }
 
 /**
- * Orb hovering above the open palm. The hand's +Z axis points up when the forearm is level,
- * which is how orbs are held.
+ * Orb, or something else magical, hovering above the open palm. The hand's +Z axis points up
+ * when the forearm is level, which is how orbs are held.
  */
-export function buildOrb(b: PartBuilder, hand: Object3D, p: UnitParams): void {
-  b.mesh(hand, new IcosahedronGeometry(0.11, 0), p.magic, [0, -0.04, 0.26]);
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * Math.PI * 2;
-    b.box(hand, p.magic, [0.05, 0.05, 0.05], [Math.cos(a) * 0.17, -0.04 + Math.sin(a) * 0.17, 0.26], [45, 45, 0]);
+export function buildOrb(b: PartBuilder, hand: Object3D, kind: OrbItem, p: UnitParams): void {
+  if (kind === 'orb') {
+    b.mesh(hand, new IcosahedronGeometry(0.11, 0), p.magic, [0, -0.04, 0.26]);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      b.box(hand, p.magic, [0.05, 0.05, 0.05], [Math.cos(a) * 0.17, -0.04 + Math.sin(a) * 0.17, 0.26], [45, 45, 0]);
+    }
+    return;
+  }
+  // the rest are built upright: +Y up and +Z forward (along the level forearm) in the stance pose
+  const float = new Object3D();
+  float.rotation.x = 90 * DEG;
+  hand.add(float);
+  switch (kind) {
+    case 'skull':
+      float.position.set(0, -0.04, 0.26);
+      b.mesh(float, new SphereGeometry(0.1, 8, 6), 'bone', [0, 0.03, 0]);
+      b.box(float, 'bone', [0.13, 0.07, 0.12], [0, -0.07, 0.03]); // jaw
+      // eyes lit in the magic colour, so it reads as cursed rather than just carried
+      for (const x of [0.045, -0.045]) b.box(float, p.magic, [0.05, 0.04, 0.03], [x, 0.01, 0.09]);
+      break;
+    case 'lantern':
+      float.position.set(0, -0.04, 0.24);
+      b.box(float, p.magic, [0.12, 0.16, 0.12], [0, 0, 0]); // the glow inside
+      for (const [x, z] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) b.box(float, p.metal, [0.025, 0.17, 0.025], [x * 0.07, 0, z * 0.07]);
+      b.box(float, p.metal, [0.17, 0.035, 0.17], [0, -0.095, 0]);
+      b.cone(float, p.metal, 0.12, 0.08, [0, 0.12, 0]);
+      b.box(float, p.metal, [0.03, 0.05, 0.03], [0, 0.18, 0]); // ring
+      break;
+    case 'spellbook': {
+      // lying open on the palm, tipped back toward the reader
+      float.position.set(0, -0.04, 0.14);
+      const book = new Object3D();
+      book.rotation.x = -30 * DEG;
+      float.add(book);
+      for (const side of [1, -1]) {
+        const half = new Object3D();
+        half.rotation.z = side * 15 * DEG;
+        book.add(half);
+        b.box(half, p.cloth, [0.14, 0.02, 0.22], [side * 0.07, 0, 0]); // cover
+        b.box(half, 'bone', [0.12, 0.03, 0.19], [side * 0.065, 0.02, 0]); // pages
+      }
+      b.box(book, p.magic, [0.05, 0.05, 0.05], [0, 0.13, 0], [45, 45, 0]); // a rune lifting off the page
+      break;
+    }
   }
 }
 
@@ -317,11 +655,29 @@ export function buildShield(
   mount.position.set(0.02 * outward, -0.04, 0.06);
   hand.add(mount);
 
-  if (kind === 'roundShield') {
-    b.cylinder(mount, p.metal, 0.25, 0.03, [0, 0, 0.04], [90, 0, 0], 12);
-    b.cylinder(mount, p.cloth, 0.21, 0.04, [0, 0, 0.06], [90, 0, 0], 12);
-    b.dome(mount, p.metal, 0.06, [0, 0, 0.08]).rotation.x = 90 * DEG;
-    return;
+  switch (kind) {
+    case 'roundShield':
+      b.cylinder(mount, p.metal, 0.25, 0.03, [0, 0, 0.04], [90, 0, 0], 12);
+      b.cylinder(mount, p.cloth, 0.21, 0.04, [0, 0, 0.06], [90, 0, 0], 12);
+      b.dome(mount, p.metal, 0.06, [0, 0, 0.08]).rotation.x = 90 * DEG;
+      return;
+    case 'buckler':
+      // small and close to the fist
+      b.cylinder(mount, p.metal, 0.14, 0.03, [0, 0, 0.02], [90, 0, 0], 10);
+      b.dome(mount, 'steel', 0.07, [0, 0, 0.035]).rotation.x = 90 * DEG;
+      return;
+    case 'towerShield':
+      // from the shins to the chin, hanging mostly below the hand
+      b.box(mount, p.metal, [0.44, 0.9, 0.03], [0, -0.12, 0.03]);
+      b.box(mount, p.cloth, [0.38, 0.84, 0.04], [0, -0.12, 0.05]);
+      for (const y of [0.18, -0.42]) b.box(mount, p.metal, [0.44, 0.05, 0.02], [0, y, 0.08]); // bands
+      b.dome(mount, p.metal, 0.07, [0, -0.12, 0.07]).rotation.x = 90 * DEG;
+      return;
+    case 'boardShield':
+      // rough planks of uneven length, a diagonal stripe painted across them
+      for (const [x, h] of [[-0.15, 0.5], [0, 0.55], [0.15, 0.47]]) b.box(mount, 'wood', [0.15, h, 0.04], [x, -0.06, 0.04]);
+      b.box(mount, p.cloth, [0.11, 0.6, 0.012], [0, -0.06, 0.066], [0, 0, 35]);
+      return;
   }
 
   const kite = (scale: number) => {

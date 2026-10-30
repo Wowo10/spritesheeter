@@ -64,6 +64,42 @@ describe('cape', () => {
   });
 });
 
+describe('robe', () => {
+  it('adds a skirt on the hips and sleeves on the forearms', () => {
+    const count = (armor: 'none' | 'robe', joint: 'hips' | 'elbowL') => {
+      const u = buildHumanoid({ ...PRESETS.priest, armor }, mats);
+      const n = meshesIn(u.joints[joint]);
+      disposeHumanoid(u);
+      return n;
+    };
+    for (const joint of ['hips', 'elbowL'] as const) expect(count('robe', joint)).toBeGreaterThan(count('none', joint));
+  });
+
+  it('leaves the skirt off a ghost, whose body already trails away', () => {
+    const u = buildHumanoid({ ...PRESETS.ghost, armor: 'robe' }, mats);
+    const plain = buildHumanoid({ ...PRESETS.ghost, armor: 'none' }, mats);
+    // only what hangs on the hips themselves; the rest of the body (sleeves included) is below them
+    const own = (o: Object3D) => o.children.filter((c) => c instanceof Mesh).length;
+    expect(own(u.joints.hips)).toBe(own(plain.joints.hips));
+    disposeHumanoid(u);
+    disposeHumanoid(plain);
+  });
+});
+
+describe('face', () => {
+  it('an eyepatch adds to the head under every helmet', () => {
+    const count = (p: UnitParams) => {
+      const u = buildHumanoid(p, mats);
+      const n = meshesIn(u.joints.head);
+      disposeHumanoid(u);
+      return n;
+    };
+    for (const helmet of HELMETS) {
+      expect(count({ ...PRESETS.pirate, helmet, face: 'eyepatch' }), helmet).toBeGreaterThan(count({ ...PRESETS.pirate, helmet, face: 'none' }));
+    }
+  });
+});
+
 describe('hair styles', () => {
   const headMeshes = (p: UnitParams) => {
     const u = buildHumanoid(p, mats);
@@ -77,6 +113,13 @@ describe('hair styles', () => {
       for (const helmet of HELMETS) expect(() => headMeshes({ ...PRESETS.worker, helmet, hairStyle })).not.toThrow();
     });
   }
+
+  it('every helmet puts something on a bald head', () => {
+    const bare = headMeshes({ ...PRESETS.worker, helmet: 'none', hairStyle: 'bald' });
+    for (const helmet of HELMETS.filter((h) => h !== 'none')) {
+      expect(headMeshes({ ...PRESETS.worker, helmet, hairStyle: 'bald' }), helmet).toBeGreaterThan(bare);
+    }
+  });
 
   it('bald adds nothing; full helms and hoods hide every style', () => {
     const bald = headMeshes({ ...PRESETS.worker, helmet: 'none', hairStyle: 'bald' });

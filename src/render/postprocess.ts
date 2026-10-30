@@ -1,4 +1,4 @@
-import { OUTLINE_INDEX, paletteIndex, rampIndex, SHADES } from './palette';
+import { OUTLINE_INDEX, paletteIndex, RAMP_NAMES, rampIndex, SHADES } from './palette';
 import type { PortraitBackground } from './portrait';
 
 /** Sprite frame as palette indices, row-major from the top-left; 0 is transparent. */
@@ -9,6 +9,8 @@ export interface IndexedFrame {
 }
 
 export type Outline = 'none' | 'inner' | 'outer';
+
+const RAMP_COUNT = RAMP_NAMES.length;
 
 export interface PostprocessSettings {
   /** Fraction of a block that must be covered for the output pixel to be opaque. */
@@ -34,7 +36,10 @@ export function downscaleFrame(
 ): IndexedFrame {
   const srcW = width * ss;
   const out = new Uint8Array(width * height);
-  const counts = new Map<number, { n: number; light: number }>();
+  // samples and summed light per ramp in the current block, and which ramps it has
+  const counts = new Uint16Array(RAMP_COUNT);
+  const lights = new Uint32Array(RAMP_COUNT);
+  const seen = new Uint8Array(RAMP_COUNT);
   const minCovered = Math.max(1, Math.round(ss * ss * settings.coverage));
   const [t0, t1, t2] = settings.thresholds;
 
@@ -42,33 +47,34 @@ export function downscaleFrame(
     // WebGL rows start at the bottom
     const sy0 = (height - 1 - oy) * ss;
     for (let ox = 0; ox < width; ox++) {
-      counts.clear();
+      let seenCount = 0;
       let covered = 0;
       for (let dy = 0; dy < ss; dy++) {
         let i = ((sy0 + dy) * srcW + ox * ss) * 4;
         for (let dx = 0; dx < ss; dx++, i += 4) {
           if (buf[i + 3] === 0) continue;
           const ramp = Math.round(buf[i] / idStep) - 1;
-          if (ramp < 0) continue;
+          if (ramp < 0 || ramp >= RAMP_COUNT) continue;
           covered++;
-          const c = counts.get(ramp);
-          if (c) {
-            c.n++;
-            c.light += buf[i + 1];
-          } else counts.set(ramp, { n: 1, light: buf[i + 1] });
+          if (counts[ramp]++ === 0) seen[seenCount++] = ramp;
+          lights[ramp] += buf[i + 1];
         }
       }
-      if (covered < minCovered) continue;
+      // the ramp seen first wins a tie; the counters are cleared for the next block
       let best = -1;
       let bestN = 0;
       let bestLight = 0;
-      for (const [ramp, c] of counts) {
-        if (c.n > bestN) {
+      for (let k = 0; k < seenCount; k++) {
+        const ramp = seen[k];
+        if (counts[ramp] > bestN) {
           best = ramp;
-          bestN = c.n;
-          bestLight = c.light;
+          bestN = counts[ramp];
+          bestLight = lights[ramp];
         }
+        counts[ramp] = 0;
+        lights[ramp] = 0;
       }
+      if (covered < minCovered) continue;
       const light = bestLight / bestN / 255;
       const shade = light < t0 ? 0 : light < t1 ? 1 : light < t2 ? 2 : 3;
       out[oy * width + ox] = paletteIndex(best, shade);

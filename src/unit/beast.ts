@@ -4,7 +4,7 @@ import type { DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
 import { METAL_RAMPS, type RampName } from '../render/palette';
 import { beastDims, type BeastDims, type BeastParams } from './beast-params';
-import { PartBuilder } from './parts';
+import { disposeTree, PartBuilder } from './parts';
 
 const DEG = Math.PI / 180;
 
@@ -360,8 +360,5 @@ export function beastDecay(p: BeastParams): DecayRecipe {
 }
 
 export function disposeBeast(beast: Beast): void {
-  beast.root.removeFromParent();
-  beast.root.traverse((o) => {
-    if (o instanceof Mesh) o.geometry.dispose();
-  });
+  disposeTree(beast.root);
 }

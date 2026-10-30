@@ -3,7 +3,7 @@ import type { VehiclePose } from '../anim/types';
 import type { DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
 import { METAL_RAMPS } from '../render/palette';
-import { PartBuilder } from './parts';
+import { disposeTree, PartBuilder } from './parts';
 import { vehicleDims, type VehicleDims, type VehicleParams } from './vehicle-params';
 
 const DEG = Math.PI / 180;
@@ -416,8 +416,5 @@ export function vehicleDecay(p: VehicleParams): DecayRecipe {
 }
 
 export function disposeVehicle(v: Vehicle): void {
-  v.root.removeFromParent();
-  v.root.traverse((o) => {
-    if (o instanceof Mesh) o.geometry.dispose();
-  });
+  disposeTree(v.root);
 }

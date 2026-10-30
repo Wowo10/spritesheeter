@@ -24,6 +24,14 @@ type V3 = [number, number, number];
 
 const DEG = Math.PI / 180;
 
+/** Takes a built unit out of its scene and frees its geometry; the materials are shared, so they stay. */
+export function disposeTree(root: Object3D): void {
+  root.removeFromParent();
+  root.traverse((o) => {
+    if (o instanceof Mesh) o.geometry.dispose();
+  });
+}
+
 /** Small helper that creates meshes in a ramp material and parents them in one call. */
 export class PartBuilder {
   constructor(private readonly mats: MaterialLibrary) {}

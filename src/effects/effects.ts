@@ -2,7 +2,7 @@ import { Group, IcosahedronGeometry, Mesh, OctahedronGeometry } from 'three';
 import { keys } from '../anim/keys';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
-import { PartBuilder } from '../unit/parts';
+import { disposeTree, PartBuilder } from '../unit/parts';
 
 // new effects go last: rows of sheets games already use must not shift
 export const EFFECT_NAMES = ['arrow', 'bolt', 'fireball', 'impact', 'puff', 'stone', 'javelin', 'bomb', 'throwingAxe', 'blast', 'bullet'] as const;
@@ -92,10 +92,7 @@ export function buildEffects(mats: MaterialLibrary, magic: RampName): Effects {
 }
 
 export function disposeEffects(fx: Effects): void {
-  fx.root.removeFromParent();
-  fx.root.traverse((o) => {
-    if (o instanceof Mesh) o.geometry.dispose();
-  });
+  disposeTree(fx.root);
 }
 
 /**

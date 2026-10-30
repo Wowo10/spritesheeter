@@ -4,7 +4,7 @@ import type { DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
 import { buildingLayout, hash01, NORMALS, type Block, type BuildingParams, type Layout, type Opening } from './building-params';
-import { PartBuilder } from './parts';
+import { disposeTree, PartBuilder } from './parts';
 
 const DEG = Math.PI / 180;
 
@@ -362,8 +362,5 @@ export function buildingDecay(p: BuildingParams): DecayRecipe {
 }
 
 export function disposeBuilding(bld: Building): void {
-  bld.root.removeFromParent();
-  bld.root.traverse((o) => {
-    if (o instanceof Mesh) o.geometry.dispose();
-  });
+  disposeTree(bld.root);
 }

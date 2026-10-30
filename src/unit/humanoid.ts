@@ -4,7 +4,7 @@ import { markBody, type DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
 import { METAL_RAMPS, type RampName } from '../render/palette';
 import { bodyDims, handItems, itemKind, type Hand, type OrbItem, type ShieldItem, type UnitParams, type WeaponItem } from './params';
-import { buildBow, buildCape, buildCrossbow, buildMusket, buildPistol, buildFace, buildHelmet, buildOrb, buildQuiver, buildShield, buildWeapon, PartBuilder } from './parts';
+import { buildBow, buildCape, buildCrossbow, buildMusket, buildPistol, buildFace, buildHelmet, buildOrb, buildQuiver, buildShield, buildWeapon, disposeTree, PartBuilder } from './parts';
 
 const DEG = Math.PI / 180;
 
@@ -284,8 +284,5 @@ export function humanoidDecay(p: UnitParams): DecayRecipe {
 }
 
 export function disposeHumanoid(unit: Humanoid): void {
-  unit.root.removeFromParent();
-  unit.root.traverse((o) => {
-    if (o instanceof Mesh) o.geometry.dispose();
-  });
+  disposeTree(unit.root);
 }

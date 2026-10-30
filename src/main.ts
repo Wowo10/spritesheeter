@@ -1,35 +1,28 @@
 import GUI, { type Controller } from 'lil-gui';
-import type { Object3D } from 'three';
-import { beastAnimations } from './anim/beast-anims';
-import { BUILDING_ROWS, buildingAnimations } from './anim/building-anims';
-import { mountedAnimations } from './anim/mounted-anims';
-import { vehicleAnimations } from './anim/vehicle-anims';
+import { BUILDING_ROWS } from './anim/building-anims';
 import { buildEffects, disposeEffects, type Effects } from './effects/effects';
-import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, humanoidAnimations, type AnimationName } from './anim/humanoid-anims';
+import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, type AnimationName } from './anim/humanoid-anims';
 import { frameTime } from './anim/types';
 import { loadModelFiles, MODEL_EXTENSIONS } from './custom/load';
-import { CustomModel, customDecay, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
+import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
 import { downloadBinary, downloadJson, downloadPng, downloadTeamMask, sheetToCanvas } from './export/download';
 import { exportGlb, rowDuration } from './export/model';
 import { packSheet, packStrip, teamMeta, type AnimationFrames, type Sheet } from './export/packer';
-import { openPlayground, type PlaygroundOptions, type Projectile } from './playground/playground';
-import { applyDecay, clearDecay } from './render/decay';
+import { openPlayground } from './playground/playground';
+import { clearDecay } from './render/decay';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
 import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, PALETTE, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
-import { DEFAULT_PORTRAIT, PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES, type PortraitHead, type PortraitSettings } from './render/portrait';
+import { DEFAULT_PORTRAIT, PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES, type PortraitSettings } from './render/portrait';
 import { framePortrait, type IndexedFrame, type Outline } from './render/postprocess';
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings } from './render/spriteRenderer';
 import { UndoHistory } from './history';
 import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
-import { applyBeastPose, beastDecay, buildBeast, disposeBeast, type Beast } from './unit/beast';
-import { applyBuildingPose, buildBuilding, buildingDecay, disposeBuilding, type Building } from './unit/building';
-import { DEFAULT_BUILDING, LIGHT_RAMPS, randomBuilding, ROOF_RAMPS, ROOFS, TRIM_RAMPS, WALL_RAMPS, type BuildingParams } from './unit/building-params';
-import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
-import { applyMountedPose, buildMounted, copyMounted, disposeMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, randomMounted, type Mounted, type MountedParams } from './unit/mounted';
-import { applyPose, buildHumanoid, disposeHumanoid, humanoidDecay, type Humanoid } from './unit/humanoid';
-import { ARMORS, BEARDS, BODIES, CAPES, EAR_STYLES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, itemKind, randomUnit, TEETH, twoHanded, type HandItem, type ThrowItem, type UnitParams } from './unit/params';
-import { applyVehiclePose, buildVehicle, disposeVehicle, vehicleDecay, type Vehicle } from './unit/vehicle';
-import { randomVehicle, VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
+import { customSubject, kindDef, KINDS, type AnyParams, type Kind, type Playable, type Subject } from './subjects';
+import { DEFAULT_BUILDING, LIGHT_RAMPS, ROOF_RAMPS, ROOFS, TRIM_RAMPS, WALL_RAMPS, type BuildingParams } from './unit/building-params';
+import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, WINGS, type BeastParams } from './unit/beast-params';
+import { copyMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, type MountedParams } from './unit/mounted';
+import { ARMORS, BEARDS, BODIES, CAPES, EAR_STYLES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, HELMETS, PRESETS, TEETH, twoHanded, type HandItem, type UnitParams } from './unit/params';
+import { VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
 import { CompassPreview, StripPreview } from './ui/spritePreview';
 import { initSplitter } from './ui/splitter';
@@ -49,21 +42,6 @@ const BASIC_ANIMS: readonly AnimationName[] = ['idle', 'walk', 'attack', 'death'
 const FRAME_SIZES = [32, 48, 64, 96, 128, 160, 192, 256];
 const OUTLINES: Outline[] = ['none', 'inner', 'outer'];
 const SUPERSAMPLES = [4, 8, 12];
-
-/** A sheet row: how many frames, and how to put the subject at normalised time t. */
-interface Playable {
-  name: string;
-  frames: number;
-  fps: number;
-  loop: boolean;
-  /** Seconds each frame is shown for, on rows played that slowly (decay); fps is 1 / hold. */
-  hold?: number;
-  /** Returns the frame's opacity, if not 1. */
-  apply: (t: number) => number | void;
-}
-
-const KINDS = ['humanoid', 'beast', 'mounted', 'vehicle', 'building'] as const;
-type Kind = (typeof KINDS)[number];
 
 const state = {
   /** Which procedural generator is in use; each keeps its own settings. */
@@ -201,46 +179,21 @@ const effectsCanvas = document.getElementById('effects') as HTMLCanvasElement;
 const portraitPreview = new StripPreview(document.getElementById('portrait') as HTMLCanvasElement);
 const side = document.getElementById('side')!;
 
-let unit: Humanoid | null = null;
-let beast: Beast | null = null;
-let mounted: Mounted | null = null;
-let vehicle: Vehicle | null = null;
-let building: Building | null = null;
+/** What the sheet is rendered from: the procedural unit, or the loaded model. */
+let subject: Subject | null = null;
+/** The loaded model, kept while the procedural unit is shown. */
 let custom: CustomModel | null = null;
 let playables: Playable[] = [];
 let rendered: AnimationFrames[] = [];
 let sheet: Sheet | null = null;
 
 function rebuild(): void {
-  if (unit) disposeHumanoid(unit);
-  if (beast) disposeBeast(beast);
-  if (mounted) disposeMounted(mounted);
-  if (vehicle) disposeVehicle(vehicle);
-  if (building) disposeBuilding(building);
-  unit = null;
-  beast = null;
-  mounted = null;
-  vehicle = null;
-  building = null;
-  custom?.root.removeFromParent();
-  if (state.source === 'model' && custom) {
-    view.scene.add(custom.root);
-  } else if (state.kind === 'beast') {
-    beast = buildBeast(state.beast, mats);
-    view.scene.add(beast.root);
-  } else if (state.kind === 'mounted') {
-    mounted = buildMounted(state.mounted, mats);
-    view.scene.add(mounted.root);
-  } else if (state.kind === 'vehicle') {
-    vehicle = buildVehicle(state.vehicle, mats);
-    view.scene.add(vehicle.root);
-  } else if (state.kind === 'building') {
-    building = buildBuilding(state.building, mats);
-    view.scene.add(building.root);
-  } else {
-    unit = buildHumanoid(state.unit, mats);
-    view.scene.add(unit.root);
-  }
+  subject?.dispose();
+  subject =
+    state.source === 'model' && custom
+      ? customSubject(custom, mats, (row) => state.model.rows[row], () => state.model.height)
+      : kindDef(state.kind).build(procedural(), mats);
+  view.scene.add(subject.root);
   regenerate();
 }
 
@@ -248,15 +201,15 @@ function rebuild(): void {
  * The sheet rows for whatever is shown, ending in decay for anything that leaves a corpse.
  * Every row first puts back what decay rotted, so the next pose starts from the whole unit.
  */
-function sheetRows(): Playable[] {
-  const root = subjectRoot();
-  const { rows, rot } = posedRows();
+function sheetRows(subject: Subject): Playable[] {
+  const { root } = subject;
+  const { rows, rot } = subject.rows(state.frames);
   const corpse = rows.find((r) => r.name === 'death');
   const all = corpse && rot ? [...rows, decayRow(corpse, rot)] : rows;
   return all.map((r) => ({
     ...r,
     apply: (t: number) => {
-      if (root) clearDecay(root);
+      clearDecay(root);
       return r.apply(t);
     },
   }));
@@ -279,99 +232,14 @@ function decayRow(death: Playable, rot: (t: number) => void): Playable {
   };
 }
 
-/**
- * The posed rows, and how the corpse rots (null if it leaves none: ghosts and see-through units
- * fade away). A custom model gets the rows it has clips for, with the procedural rows' timing;
- * without any it's a static model, one frame per direction.
- */
-function posedRows(): { rows: Playable[]; rot: ((t: number) => void) | null } {
-  // a custom model may be a building going up
-  const defs = [...humanoidAnimations(state.frames), ...buildingAnimations(state.frames).filter((d) => d.name === 'build')];
-  const m = custom;
-  if (state.source === 'model' && m) {
-    const rows = defs.flatMap((d): Playable[] => {
-      const clip = m.clip(state.model.rows[d.name as AnimationName]);
-      return clip ? [{ name: d.name, frames: d.frames, fps: d.fps, loop: d.loop, apply: (t) => m.sample(clip, t, d.loop) }] : [];
-    });
-    const rot = (t: number) => applyDecay(m.root, t, mats, customDecay());
-    return { rows: rows.length > 0 ? rows : [{ name: 'idle', frames: 1, fps: 1, loop: true, apply: () => m.sample(null, 0, true) }], rot };
-  }
-  const corpse = unitOpacity() === 1;
-  const b = beast;
-  if (b) {
-    const rows = beastAnimations(state.frames).map((d) => ({
-      ...d,
-      apply: (t: number) => {
-        const pose = d.pose(t, state.beast, b.hipHeight);
-        applyBeastPose(b, pose);
-        return pose.opacity;
-      },
-    }));
-    return { rows, rot: corpse ? (t) => applyDecay(b.root, t, mats, beastDecay(state.beast)) : null };
-  }
-  const m2 = mounted;
-  if (m2) {
-    const rows = mountedAnimations(state.frames).map((d) => ({
-      ...d,
-      apply: (t: number) => {
-        const pose = d.pose(t, state.mounted, 0);
-        applyMountedPose(m2, pose);
-        return pose.opacity;
-      },
-    }));
-    const rot = (t: number) => {
-      applyDecay(m2.rider.root, t, mats, humanoidDecay(state.mounted.rider));
-      applyDecay(m2.beast.root, t, mats, beastDecay(state.mounted.mount));
-    };
-    return { rows, rot: corpse ? rot : null };
-  }
-  const v = vehicle;
-  if (v) {
-    const rows = vehicleAnimations(state.frames).map((d) => ({
-      ...d,
-      apply: (t: number) => applyVehiclePose(v, d.pose(t, state.vehicle, 0)),
-    }));
-    return { rows, rot: (t) => applyDecay(v.root, t, mats, vehicleDecay(state.vehicle)) };
-  }
-  const bld = building;
-  if (bld) {
-    const defs = buildingAnimations(state.frames);
-    const rows = defs.map((d) => ({
-      ...d,
-      apply: (t: number) => applyBuildingPose(bld, d.pose(t, state.building, 0)),
-    }));
-    const death = defs.find((d) => d.name === 'death')!;
-    const rot = (t: number) => {
-      applyBuildingPose(bld, { ...death.pose(1, state.building, 0), ruin: t });
-      applyDecay(bld.root, t, mats, buildingDecay(state.building));
-    };
-    return { rows, rot };
-  }
-  const u = unit!;
-  const rows = humanoidAnimations(state.frames).map((d) => ({
-    ...d,
-    apply: (t: number) => {
-      const pose = d.pose(t, state.unit, u.hipHeight);
-      applyPose(u, pose);
-      return pose.opacity;
-    },
-  }));
-  return { rows, rot: corpse && state.unit.body !== 'ghost' ? (t) => applyDecay(u.root, t, mats, humanoidDecay(state.unit)) : null };
-}
-
-/** What the sheet is rendered from: the loaded model or the procedural unit. */
-function subjectRoot(): Object3D | undefined {
-  return state.source === 'model' ? custom?.root : (unit ?? beast ?? mounted ?? vehicle ?? building)?.root;
-}
-
 function regenerate(): void {
-  const root = subjectRoot();
-  if (!root) return;
+  if (!subject) return;
+  const { root } = subject;
   mats.setLighting({ ...state.lighting, thresholds: state.sprite.thresholds });
   sprites.configureCamera(view.ortho, state.sprite);
   view.fitOrtho();
 
-  playables = sheetRows();
+  playables = sheetRows(subject);
   rendered = playables.map((a) => ({
     name: a.name,
     fps: a.fps,
@@ -395,28 +263,19 @@ let portraitFrames: IndexedFrame[] = [];
 /** Plays the portrait's loop in the time the idle row takes. */
 let portraitFps = 1;
 
-/** The head the portrait closes in on; vehicles, buildings and custom models are framed whole. */
-function portraitHead(): PortraitHead | null {
-  if (state.source === 'model') return null;
-  const rig = unit ?? beast ?? mounted?.rider;
-  return rig ? { joint: rig.joints.head, ...rig.skull } : null;
-}
-
 /**
  * Renders the portrait from the idle row (the first row if there's none): its first frame for
  * a still, or the whole loop over the portrait's frames, with its background and border.
  */
 function renderPortrait(): void {
-  const root = subjectRoot();
   const row = playables.find((a) => a.name === 'idle') ?? playables[0];
-  if (!root || !row) return;
+  if (!subject || !row) return;
   const p = state.portrait;
-  const frames = sprites.renderPortrait(root, {
+  const frames = sprites.renderPortrait(subject.root, {
     count: p.frames,
     setFrame: (i) => row.apply(frameTime({ frames: p.frames, loop: true }, i)),
-    head: portraitHead(),
-    // the mount's neck would be in front of the rider's face
-    hide: state.source === 'unit' && mounted ? [mounted.beast.root] : [],
+    head: subject.portraitHead,
+    hide: subject.portraitHide,
     portrait: p,
     sprite: state.sprite,
   });
@@ -567,47 +426,11 @@ function exportAllTeams(): void {
 
 // --- playground -------------------------------------------------------------
 
-/** What a vehicle's weapon shoots, whether it attacks or "casts"; a ram strikes up close. */
-const VEHICLE_SHOTS: Record<VehicleParams['weapon'], Projectile | null> = { ram: null, catapult: 'stone', ballista: 'javelin', flamethrower: 'fireball' };
-
-const THROWN: Record<ThrowItem, Projectile> = { javelin: 'javelin', bomb: 'bomb', throwingAxe: 'throwingAxe' };
-
-/**
- * What the unit's attack lets fly, picked as the attack picks its hand: bows and crossbows
- * shoot arrows, muskets and pistols bullets; failing those, the right hand's throwing item,
- * then the left's. Null is melee.
- */
-function projectileOf(u: UnitParams): Projectile | null {
-  const items = handItems(u);
-  if ([items.L, items.R].some((i) => i === 'bow' || i === 'crossbow')) return 'arrow';
-  if ([items.L, items.R].some((i) => i === 'musket' || i === 'pistol')) return 'bullet';
-  const thrown = (i: HandItem) => (itemKind(i) === 'throw' ? THROWN[i as ThrowItem] : null);
-  return thrown(items.R) ?? thrown(items.L);
-}
-
-/**
- * How far the unit gets per loop of walk and run (from its leg length and how far its legs
- * swing), and what it shoots, so it moves and fights in the playground as it looks.
- */
-function playgroundUnit(): Pick<PlaygroundOptions, 'stride' | 'attack' | 'cast' | 'channel'> {
-  // legs swinging ±28° walking cover about 1.9 leg lengths a loop; running, with a moment in the air, about 2.8
-  const legs = (hip: number) => ({ walk: 1.9 * hip, run: 2.8 * hip });
-  if (state.source === 'model' && custom) return { stride: legs(state.model.height / 2), attack: null, cast: 'bolt', channel: true };
-  if (beast) return { stride: legs(beast.hipHeight), attack: null, cast: state.beast.breath ? 'fireball' : null, channel: state.beast.breath };
-  if (mounted) return { stride: legs(mounted.beast.hipHeight), attack: projectileOf(state.mounted.rider), cast: 'bolt', channel: true };
-  if (vehicle) {
-    // the wheels turn a quarter turn a loop walking, half a turn running
-    const r = vehicle.dims.wheelR;
-    const shot = VEHICLE_SHOTS[state.vehicle.weapon];
-    return { stride: { walk: (Math.PI * r) / 2, run: Math.PI * r }, attack: shot, cast: shot, channel: state.vehicle.weapon === 'flamethrower' };
-  }
-  return { stride: legs(unit!.hipHeight), attack: projectileOf(state.unit), cast: 'bolt', channel: true };
-}
-
 /** Two of the unit, in the team colour and a rival's, to order around on a grid. */
 function showPlayground(): void {
-  if (!sheet) return;
-  if (building) {
+  if (!sheet || !subject) return;
+  const unit = subject.playground();
+  if (!unit) {
     alert("The playground is for units that move and fight; buildings don't, yet.");
     return;
   }
@@ -618,7 +441,7 @@ function showPlayground(): void {
     teams: [state.team, state.team === 'blue' ? 'red' : 'blue'],
     pixelsPerUnit: state.sprite.pixelsPerUnit,
     elevation: state.sprite.elevation,
-    ...playgroundUnit(),
+    ...unit,
   });
 }
 
@@ -663,42 +486,31 @@ for (const g of [gui, tools]) {
 const addTeamController = (folder: GUI) => folder.add(state, 'team', TEAM_COLOR_NAMES).name('team color').onChange(applyTeam);
 
 /** The settings of the procedural generator in use. */
-function procedural(): UnitParams | BeastParams | MountedParams | VehicleParams | BuildingParams {
+function procedural(): AnyParams {
   return { humanoid: state.unit, beast: state.beast, mounted: state.mounted, vehicle: state.vehicle, building: state.building }[state.kind];
 }
 
-/** The spell colour of the procedural unit; a mounted unit's rider casts, a vehicle's is its fire, a building's its lights. */
-function magicColor(): RampName {
-  if (state.kind === 'mounted') return state.mounted.rider.magic;
-  if (state.kind === 'vehicle') return state.vehicle.flame;
-  if (state.kind === 'building') return state.building.light;
-  return (procedural() as UnitParams | BeastParams).magic;
+/** Replaces the settings of the procedural generator in use. */
+function setProcedural(p: AnyParams): void {
+  if (state.kind === 'humanoid') state.unit = p as UnitParams;
+  else state[state.kind] = p as never;
 }
 
-/** The procedural unit's opacity; a mounted unit's is its mount's, and vehicles and buildings are solid. */
-function unitOpacity(): number {
-  if (state.kind === 'mounted') return state.mounted.mount.opacity;
-  if (state.kind === 'vehicle' || state.kind === 'building') return 1;
-  return (procedural() as UnitParams | BeastParams).opacity;
-}
+/** The spell colour of the procedural unit. */
+const magicColor = (): RampName => kindDef(state.kind).magic(procedural());
 
-const PRESETS_OF: Record<Kind, Record<string, unknown>> = { humanoid: PRESETS, beast: BEAST_PRESETS, mounted: MOUNTED_PRESETS, vehicle: VEHICLE_PRESETS, building: {} };
-const presetNames = (kind: Kind) => Object.keys(PRESETS_OF[kind]);
+/** The procedural unit's opacity. */
+const unitOpacity = (): number => kindDef(state.kind).opacity(procedural());
+
+const presetNames = (kind: Kind) => Object.keys(kindDef(kind).presets);
 
 function applyPreset(name: string): void {
-  if (state.kind === 'beast') state.beast = { ...BEAST_PRESETS[name], seed: state.beast.seed };
-  else if (state.kind === 'mounted') state.mounted = { ...copyMounted(MOUNTED_PRESETS[name]), seed: state.mounted.seed };
-  else if (state.kind === 'vehicle') state.vehicle = { ...VEHICLE_PRESETS[name], seed: state.vehicle.seed };
-  else state.unit = { ...PRESETS[name], seed: state.unit.seed };
+  setProcedural(kindDef(state.kind).preset(name, procedural().seed));
 }
 
 function randomize(seed: number): void {
   state.preset = 'random';
-  if (state.kind === 'beast') state.beast = randomBeast(seed);
-  else if (state.kind === 'mounted') state.mounted = randomMounted(seed);
-  else if (state.kind === 'vehicle') state.vehicle = randomVehicle(seed);
-  else if (state.kind === 'building') state.building = randomBuilding(seed);
-  else state.unit = randomUnit(seed);
+  setProcedural(kindDef(state.kind).random(seed));
 }
 
 /** The preset last picked for each type, so switching back and forth keeps its name. */
@@ -713,14 +525,9 @@ unitFolder
   .onChange((kind: Kind) => {
     lastPreset[shownKind] = state.preset;
     state.preset = lastPreset[kind];
-    // a rider on its mount (or flying on it) is well over twice as tall as a unit on foot,
-    // and siege engines are about as long
-    if ((kind === 'mounted' || kind === 'vehicle') && state.sprite.frameSize < 64) state.sprite.frameSize = 64;
-    // buildings are bigger still, and have only some of the rows
-    if (kind === 'building') {
-      if (state.sprite.frameSize < 128) state.sprite.frameSize = 128;
-      if (![...BUILDING_ROWS, 'decay'].includes(state.previewAnim)) state.previewAnim = 'idle';
-    }
+    state.sprite.frameSize = Math.max(state.sprite.frameSize, kindDef(kind).minFrameSize);
+    // buildings have only some of the rows
+    if (kind === 'building' && ![...BUILDING_ROWS, 'decay'].includes(state.previewAnim)) state.previewAnim = 'idle';
     rebindUnit();
     rebuild();
   });
@@ -729,7 +536,6 @@ unitFolder
  * clip (not just the checked ones), timed like the sheet. A loaded model already has a file.
  */
 async function exportModel(): Promise<void> {
-  const subject = unit ?? beast ?? mounted ?? vehicle ?? building;
   if (state.source === 'model' || !subject) {
     alert('Export model works on the procedural unit. Switch "show" to the procedural unit to export it.');
     return;

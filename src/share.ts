@@ -19,6 +19,28 @@ export function decodeSettings(text: string): unknown {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
+ * The fields of `current` whose value differs from `base`'s, nested as in `current`, or
+ * undefined if none do. An array goes in whole if any of it differs, as mergeSettings only
+ * takes arrays whole.
+ */
+export function diffSettings(current: Record<string, unknown>, base: unknown): Record<string, unknown> | undefined {
+  const from = isObject(base) ? base : {};
+  const diff: Record<string, unknown> = {};
+  for (const [key, cur] of Object.entries(current)) {
+    const old = from[key];
+    if (isObject(cur)) {
+      const inner = diffSettings(cur, old);
+      if (inner) diff[key] = inner;
+    } else if (Array.isArray(cur)) {
+      if (!Array.isArray(old) || old.length !== cur.length || cur.some((v, i) => v !== old[i])) diff[key] = cur;
+    } else if (cur !== old) {
+      diff[key] = cur;
+    }
+  }
+  return Object.keys(diff).length ? diff : undefined;
+}
+
+/**
  * Copies values from `source` into `target`, in place, but only for keys `target` already has
  * and only when the type matches, so a link from an older or newer version (or a hand-edited
  * one) can't put anything unexpected into the app's state. Arrays must keep their length.

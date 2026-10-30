@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeSettings, encodeSettings, mergeSettings } from '../src/share';
+import { decodeSettings, diffSettings, encodeSettings, mergeSettings } from '../src/share';
 
 describe('share links', () => {
   it('round-trips settings through URL-safe base64', () => {
@@ -53,5 +53,30 @@ describe('mergeSettings', () => {
     const t = target();
     for (const v of [null, 5, 'x', [1]]) mergeSettings(t, v);
     expect(t).toEqual(target());
+  });
+});
+
+describe('diffSettings', () => {
+  const base = () => ({ size: 32, mode: 'inner', nested: { a: 1, b: 'x' }, list: [0.2, 0.5, 0.8] });
+
+  it('is undefined when nothing differs', () => {
+    expect(diffSettings(base(), base())).toBeUndefined();
+  });
+
+  it('keeps only the changed leaves, and a changed array whole', () => {
+    const cur = { ...base(), mode: 'outer', nested: { a: 1, b: 'y' }, list: [0.2, 0.5, 0.9] };
+    expect(diffSettings(cur, base())).toEqual({ mode: 'outer', nested: { b: 'y' }, list: [0.2, 0.5, 0.9] });
+  });
+
+  it('ignores keys only the base has, and keeps those it lacks', () => {
+    expect(diffSettings({ size: 32 }, base())).toBeUndefined();
+    expect(diffSettings({ size: 32, extra: { on: true } }, base())).toEqual({ extra: { on: true } });
+  });
+
+  it('merges back onto the base to give the original', () => {
+    const cur = { ...base(), size: 64, nested: { a: 2, b: 'x' }, list: [0.1, 0.5, 0.8] };
+    const restored = base();
+    mergeSettings(restored, decodeSettings(encodeSettings(diffSettings(cur, base()))));
+    expect(restored).toEqual(cur);
   });
 });

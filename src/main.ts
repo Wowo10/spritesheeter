@@ -16,7 +16,7 @@ import { DEFAULT_PORTRAIT, PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES, type PortraitSe
 import { framePortrait, type FrameSamples, type IndexedFrame, type Outline } from './render/postprocess';
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, shadeSprite, shadeSprites, SpriteRenderer, type Direction, type SpriteSettings } from './render/spriteRenderer';
 import { UndoHistory } from './history';
-import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
+import { decodeSettings, diffSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
 import { customSubject, kindDef, KINDS, type AnyParams, type Kind, type Playable, type Subject } from './subjects';
 import { DEFAULT_BUILDING, ROOFS, type BuildingParams } from './unit/building-params';
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, WINGS, type BeastParams } from './unit/beast-params';
@@ -142,13 +142,36 @@ function sharedSettings() {
   return { kind, preset, unit, beast, mounted, vehicle, building, frames, decayHold, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team };
 }
 
-/** Applies the settings of a share link the page was opened from, before the GUI is built. */
+/** The settings the page opens with, which a share link only records the changes from. */
+const SHARE_DEFAULTS = JSON.parse(JSON.stringify(sharedSettings()));
+
+/** The field of state (and of a share link) that holds the settings of a kind. */
+const paramsKey = (kind: Kind) => (kind === 'humanoid' ? 'unit' : kind);
+
+/** The unit a preset gives, or the random one for the seed if it's not one of the kind's presets. */
+function presetParams(kind: Kind, preset: string, seed: number): AnyParams {
+  const def = kindDef(kind);
+  return Object.hasOwn(def.presets, preset) ? def.preset(preset, seed) : def.random(seed);
+}
+
+/**
+ * Applies the settings of a share link the page was opened from, before the GUI is built.
+ * A v2 link records only what differs from the defaults, and from the unit its preset (or
+ * seed) gives; a v1 link records everything.
+ */
 function loadSharedSettings(): void {
   const text = new URLSearchParams(location.search).get(SHARE_PARAM);
   if (!text) return;
   try {
-    const shared = sharedSettings();
-    mergeSettings(shared, decodeSettings(text), SHARE_CHOICES);
+    const decoded = decodeSettings(text);
+    const shared: Record<string, unknown> = sharedSettings();
+    mergeSettings(shared, decoded, SHARE_CHOICES);
+    if ((decoded as { v?: unknown }).v === 2) {
+      const kind = shared.kind as Kind;
+      const key = paramsKey(kind);
+      shared[key] = presetParams(kind, shared.preset as string, (shared[key] as AnyParams).seed);
+      mergeSettings(shared, decoded, SHARE_CHOICES);
+    }
     Object.assign(state, shared);
   } catch (e) {
     alert(`Couldn't read the shared settings in this link: ${(e as Error).message}`);
@@ -156,11 +179,23 @@ function loadSharedSettings(): void {
 }
 loadSharedSettings();
 
+/** What a share link records: the type in use and what differs from where it started. */
+function shareLinkSettings() {
+  const key = paramsKey(state.kind);
+  const shared: Record<string, unknown> = sharedSettings();
+  // only the type in use travels
+  for (const kind of KINDS) if (paramsKey(kind) !== key) delete shared[paramsKey(kind)];
+  const seed = procedural().seed;
+  const diff = diffSettings(shared, { ...SHARE_DEFAULTS, [key]: presetParams(state.kind, state.preset, seed) }) ?? {};
+  // the seed always, since the unit the changes apply to comes from it
+  return { v: 2, ...diff, [key]: { ...(diff[key] as object), seed } };
+}
+
 /** Puts the current settings in the address bar and copies the link. */
 async function copyShareLink(): Promise<void> {
   const url = new URL(location.href);
   url.hash = '';
-  url.searchParams.set(SHARE_PARAM, encodeSettings({ v: 1, ...sharedSettings() }));
+  url.searchParams.set(SHARE_PARAM, encodeSettings(shareLinkSettings()));
   history.replaceState(null, '', url);
   try {
     await navigator.clipboard.writeText(url.href);
@@ -780,15 +815,6 @@ const reframePortrait = () => {
   shadePortrait();
   showPortrait();
 };
-const portraitFolder = restoreOpen(gui.addFolder('Portrait'), true);
-portraitFolder.add(state.portrait, 'size', PORTRAIT_SIZES).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'zoom', 0.5, 2, 0.05).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'turn', -90, 90, 1).name('turn (°)').onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'elevation', 0, 45, 1).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'frames', 1, 12, 1).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'background', PORTRAIT_BACKGROUNDS).onFinishChange(reframePortrait);
-portraitFolder.add(state.portrait, 'border').onFinishChange(reframePortrait);
-
 const lightFolder = restoreOpen(gui.addFolder('Lighting'), true);
 lightFolder.add(state.lighting, 'azimuth', -180, 180, 1).name('light from ← →').onFinishChange(queueRegenerate);
 lightFolder.add(state.lighting, 'elevation', -30, 90, 1).name('light height').onFinishChange(queueRegenerate);
@@ -804,7 +830,7 @@ viewFolder.add(view, 'spriteView').name('sprite camera');
 // wheel over the view zooms too, double-click resets
 viewFolder.add(view.ortho, 'zoom', MIN_ZOOM, MAX_ZOOM, 0.01).name('sprite zoom').onChange((z: number) => view.setSpriteZoom(z)).listen();
 
-const exportFolder = restoreOpen(gui.addFolder('Export'));
+const exportFolder = restoreOpen(gui.addFolder('Export'), true);
 for (const name of ANIMATION_NAMES) exportFolder.add(state.exportAnims, name);
 exportFolder.add(state, 'teamMask').name('team mask');
 exportFolder.add(actions, 'export').name('💾 export PNG + JSON');
@@ -867,7 +893,7 @@ async function openFiles(files: File[], mode: 'model' | 'anims' | 'auto'): Promi
   }
 }
 
-const modelFolder = restoreOpen(gui.addFolder('Custom model (experimental)'));
+const modelFolder = restoreOpen(gui.addFolder('Custom model (experimental)'), true);
 modelFolder.add({ load: () => modelPicker.click() }, 'load').name('📂 load .glb / .gltf / .fbx / .obj…');
 const sourceController = modelFolder
   .add(state, 'source', { 'procedural unit': 'unit', 'custom model': 'model' })
@@ -934,6 +960,15 @@ function rebindModel(): void {
   modelFolders = [rows, materials];
 }
 rebindModel();
+
+const portraitFolder = restoreOpen(gui.addFolder('Portrait'), true);
+portraitFolder.add(state.portrait, 'size', PORTRAIT_SIZES).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'zoom', 0.5, 2, 0.05).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'turn', -90, 90, 1).name('turn (°)').onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'elevation', 0, 45, 1).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'frames', 1, 12, 1).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'background', PORTRAIT_BACKGROUNDS).onFinishChange(reframePortrait);
+portraitFolder.add(state.portrait, 'border').onFinishChange(reframePortrait);
 
 // --- undo -------------------------------------------------------------------
 

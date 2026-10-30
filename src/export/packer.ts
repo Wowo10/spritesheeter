@@ -106,13 +106,25 @@ function blit(dst: Uint8Array, dstW: number, f: IndexedFrame, x0: number, y0: nu
   }
 }
 
+/** Each palette entry as one opaque RGBA pixel (entry 0 transparent), ready to copy as a 32-bit word. */
+const rgbaTables = new WeakMap<RGB[], Uint32Array>();
+
+function rgbaTable(palette: RGB[]): Uint32Array {
+  let table = rgbaTables.get(palette);
+  if (!table) {
+    table = new Uint32Array(256);
+    // written bytewise, so the words come out right whatever the byte order
+    const bytes = new Uint8Array(table.buffer);
+    palette.forEach(([r, g, b], v) => v !== 0 && bytes.set([r, g, b, 255], v * 4));
+    rgbaTables.set(palette, table);
+  }
+  return table;
+}
+
 export function indexedToRgba(data: Uint8Array, palette: RGB[] = PALETTE): Uint8ClampedArray {
   const out = new Uint8ClampedArray(data.length * 4);
-  for (let i = 0; i < data.length; i++) {
-    const v = data[i];
-    if (v === 0) continue;
-    const [r, g, b] = palette[v];
-    out.set([r, g, b, 255], i * 4);
-  }
+  const words = new Uint32Array(out.buffer);
+  const table = rgbaTable(palette);
+  for (let i = 0; i < data.length; i++) words[i] = table[data[i]];
   return out;
 }

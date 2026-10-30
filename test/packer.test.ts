@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { indexedToRgba, packSheet, packStrip, type AnimationFrames } from '../src/export/packer';
-import { PALETTE } from '../src/render/palette';
+import { PALETTE, TEAM_COLOR_NAMES, teamPalette } from '../src/render/palette';
 import type { IndexedFrame } from '../src/render/postprocess';
 import { DIRECTIONS, type Direction } from '../src/render/spriteRenderer';
 
@@ -48,6 +48,15 @@ describe('packSheet', () => {
     const rgba = indexedToRgba(new Uint8Array([0, 5, PALETTE.length - 1]));
     expect(Array.from(rgba.slice(0, 4))).toEqual([0, 0, 0, 0]);
     expect(Array.from(rgba.slice(4, 8))).toEqual([...PALETTE[5], 255]);
+  });
+
+  it('converts every palette entry, in any team palette', () => {
+    const all = Uint8Array.from(PALETTE.keys());
+    for (const team of TEAM_COLOR_NAMES) {
+      const palette = teamPalette(team);
+      const expected = Array.from(all).flatMap((v) => (v === 0 ? [0, 0, 0, 0] : [...palette[v], 255]));
+      expect(Array.from(indexedToRgba(all, palette))).toEqual(expected);
+    }
   });
 });
 

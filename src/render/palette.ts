@@ -103,8 +103,15 @@ export function teamRgb(team: TeamColor): RGB[] {
   return TEAM_COLORS[team].map(hexToRgb);
 }
 
+const teamPalettes = new Map<TeamColor, RGB[]>();
+
+/** The palette with the team ramp in the given colours; the same array each time, so don't change it. */
 export function teamPalette(team: TeamColor): RGB[] {
-  const pal = PALETTE.slice();
-  teamRgb(team).forEach((rgb, s) => (pal[TEAM_INDICES[s]] = rgb));
+  let pal = teamPalettes.get(team);
+  if (!pal) {
+    pal = PALETTE.slice();
+    teamRgb(team).forEach((rgb, s) => (pal![TEAM_INDICES[s]] = rgb));
+    teamPalettes.set(team, pal);
+  }
   return pal;
 }

@@ -32,7 +32,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .sheetWrap { overflow: auto; max-height: 60vh; }
 .lil-gui.root { position: absolute; top: 8px; right: calc(var(--side-width) + 20px); }
 #view3d > .lil-gui.root { top: auto; right: auto; left: 8px; bottom: 8px; }
-/* several buttons side by side in one lil-gui row (undo / redo) */
+/* several buttons side by side in one lil-gui row (undo / redo, ko-fi / github) */
 .lil-gui .buttonRow .widget { gap: 4px; }
 .lil-gui .buttonRow button:disabled { opacity: 0.5; pointer-events: none; }
 @media (max-width: 900px) {

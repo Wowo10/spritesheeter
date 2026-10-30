@@ -728,6 +728,29 @@ const SHARE_LABEL = '🔗 share';
 const shareController = tools.add({ share: copyShareLink }, 'share').name(SHARE_LABEL);
 tools.add({ playground: showPlayground }, 'playground').name('🎮 playground');
 
+/** An account written into index.html by `npm run insert_links`; null while still a placeholder. */
+function linkedAccount(name: string): string | null {
+  const content = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)?.content ?? '';
+  return content && !/^__\w+__$/.test(content) ? content : null;
+}
+// ko-fi and github share a row like undo / redo, each only once its account is filled in
+const links = [
+  { label: '☕ ko-fi', account: linkedAccount('kofi'), site: 'https://ko-fi.com/' },
+  { label: '🐙 github', account: linkedAccount('github'), site: 'https://github.com/' },
+].filter((link) => link.account);
+const linkButtons = links.map(({ label, account, site }) => {
+  const controller = tools.add({ open: () => window.open(site + account, '_blank', 'noopener') }, 'open').name(label);
+  return { controller, button: controller.domElement.querySelector('button')! };
+});
+if (linkButtons.length > 1) {
+  const [first, ...rest] = linkButtons;
+  first.controller.domElement.classList.add('buttonRow');
+  for (const { controller, button } of rest) {
+    first.controller.domElement.querySelector('.widget')!.append(button);
+    controller.domElement.remove();
+  }
+}
+
 const animFolder = restoreOpen(gui.addFolder('Animation'));
 animFolder.add(state, 'previewAnim', ANIMATION_NAMES).name('preview').onChange(showPreviewAnim);
 for (const name of ANIMATION_NAMES) {

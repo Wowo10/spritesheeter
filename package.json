@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "insert_g_secret": "node scripts/insert-g-secret.js"
+    "insert_g_secret": "node scripts/insert-g-secret.js",
+    "insert_links": "node scripts/insert-links.js"
   },
   "dependencies": {
     "lil-gui": "^0.20.0",

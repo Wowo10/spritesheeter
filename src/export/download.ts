@@ -25,12 +25,12 @@ function saveBlob(blob: Blob, filename: string): void {
 }
 
 /** The sheet as an indexed (palette) PNG, drawn in the given palette. */
-export async function downloadPng(sheet: Sheet, filename: string, palette: RGB[] = PALETTE): Promise<void> {
+export async function downloadPng(sheet: Pick<Sheet, 'width' | 'height' | 'data'>, filename: string, palette: RGB[] = PALETTE): Promise<void> {
   downloadBinary(await indexedPng(sheet, palette), filename, 'image/png');
 }
 
 /** The team-coloured pixels of the sheet, grey per shade; see teamMaskPixels. */
-export async function downloadTeamMask(sheet: Sheet, filename: string): Promise<void> {
+export async function downloadTeamMask(sheet: Pick<Sheet, 'width' | 'height' | 'data'>, filename: string): Promise<void> {
   downloadBinary(await teamMaskPng(sheet), filename, 'image/png');
 }
 

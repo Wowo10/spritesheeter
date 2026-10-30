@@ -73,3 +73,53 @@ export class CompassPreview {
     );
   }
 }
+
+/** A portrait: one frame at a time, at the largest whole-pixel zoom that fits, up to MAX_SCALE. */
+export class StripPreview {
+  static readonly MAX_SCALE = 4;
+  private frames: HTMLCanvasElement[] = [];
+  private size = 64;
+  private maxWidth = Infinity;
+  private current = 0;
+  private readonly ctx: CanvasRenderingContext2D;
+
+  constructor(private readonly canvas: HTMLCanvasElement) {
+    this.ctx = canvas.getContext('2d')!;
+  }
+
+  get frameCount(): number {
+    return this.frames.length;
+  }
+
+  fitWidth(width: number): void {
+    this.maxWidth = width;
+    this.resize();
+    // resizing the canvas clears it
+    this.draw(this.current);
+  }
+
+  setFrames(frames: IndexedFrame[], palette: RGB[] = PALETTE): void {
+    this.frames = frames.map((f) => frameToCanvas(f, palette));
+    this.size = frames[0]?.width ?? this.size;
+    this.resize();
+    this.draw(0);
+  }
+
+  draw(frameIndex: number): void {
+    this.current = frameIndex % Math.max(1, this.frames.length);
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    const f = this.frames[this.current];
+    if (f) this.ctx.drawImage(f, 0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  private resize(): void {
+    const scale = Math.max(1, Math.min(StripPreview.MAX_SCALE, Math.floor(this.maxWidth / this.size)));
+    const px = this.size * scale;
+    if (this.canvas.width !== px) {
+      this.canvas.width = px;
+      this.canvas.height = px;
+    }
+    this.canvas.style.width = `${Math.min(px, this.maxWidth)}px`;
+  }
+}

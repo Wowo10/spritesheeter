@@ -21,6 +21,11 @@ export interface Beast {
   /** Empty mount point on top of the back where a rider sits, following the pelvis. */
   saddle: Group;
   shadow: Mesh | null;
+  /**
+   * Middle of the head, snout or beak included, in the head joint's space, and a size that frames
+   * it in a portrait as closely as a humanoid's head and shoulders.
+   */
+  skull: { center: [number, number, number]; size: number };
 }
 
 const SIDES = [
@@ -150,7 +155,11 @@ export function buildBeast(p: BeastParams, mats: MaterialLibrary): Beast {
     shadow.userData.length = Math.max(1, (L + d.neck + h) / (W * 1.8));
   }
 
-  return { root, body, joints, hipHeight, fx, load, saddle, shadow };
+  // the skull runs from just behind the joint to h * 0.85, the snout from snoutZ; a long face
+  // lies across the frame, so it needn't be as far inside it as a head standing upright
+  const faceEnd = Math.max(h * 0.85, snoutZ + snout);
+  const skull = { center: [0, 0, (faceEnd - h * 0.1) / 2] as [number, number, number], size: 0.7 * (faceEnd + h * 0.1) };
+  return { root, body, joints, hipHeight, fx, load, saddle, shadow, skull };
 }
 
 function buildEars(b: PartBuilder, head: Object3D, p: BeastParams, h: number): void {

@@ -20,7 +20,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .panel { background: var(--panel); border-radius: 6px; padding: 10px; }
 .panel h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
 .panel h2 span { color: var(--muted); font-weight: 400; margin-left: 6px; }
-#compass, .sheetWrap canvas {
+#compass, #portrait, .sheetWrap canvas {
   image-rendering: pixelated;
   background-color: var(--checker-a);
   background-image:

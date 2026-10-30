@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { OUTLINE_INDEX, paletteIndex } from '../src/render/palette';
-import { downscaleFrame, mirrorFrame, outline, type IndexedFrame } from '../src/render/postprocess';
+import { OUTLINE_INDEX, paletteIndex, TEAM_INDICES } from '../src/render/palette';
+import { BEVEL_DARK, BEVEL_LIGHT, downscaleFrame, framePortrait, mirrorFrame, outline, PORTRAIT_FILL, type IndexedFrame } from '../src/render/postprocess';
 
 const STEP = 8;
 
@@ -69,5 +69,35 @@ describe('outline & mirror', () => {
   it('mirrors horizontally', () => {
     const f: IndexedFrame = { width: 3, height: 1, data: new Uint8Array([1, 2, 3]) };
     expect(Array.from(mirrorFrame(f).data)).toEqual([3, 2, 1]);
+  });
+});
+
+describe('framePortrait', () => {
+  const lit = paletteIndex(2, 3);
+  // 4x4, the unit in the middle 2x2
+  const frame: IndexedFrame = { width: 4, height: 4, data: new Uint8Array(16) };
+  [5, 6, 9, 10].forEach((i) => (frame.data[i] = lit));
+
+  it('fills only the transparent pixels', () => {
+    const d = framePortrait(frame, 'dark', false).data;
+    expect([d[5], d[6], d[9], d[10]]).toEqual(Array(4).fill(lit));
+    expect([d[0], d[3], d[12], d[15]]).toEqual(Array(4).fill(PORTRAIT_FILL.dark));
+  });
+
+  it('leaves a transparent background with none, and fills the team background with a team shade', () => {
+    expect(Array.from(framePortrait(frame, 'none', false).data)).toEqual(Array.from(frame.data));
+    expect(TEAM_INDICES).toContain(framePortrait(frame, 'team', false).data[0]);
+  });
+
+  it('bevels the edge: light top and left, dark bottom and right', () => {
+    const d = framePortrait(frame, 'none', true).data;
+    expect([d[1], d[2], d[4], d[8]]).toEqual(Array(4).fill(BEVEL_LIGHT));
+    expect([d[13], d[14], d[7], d[11]]).toEqual(Array(4).fill(BEVEL_DARK));
+    expect(d[5]).toBe(lit);
+  });
+
+  it('leaves the frame it was given alone', () => {
+    framePortrait(frame, 'dark', true);
+    expect(frame.data[0]).toBe(0);
   });
 });

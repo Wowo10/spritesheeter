@@ -1,6 +1,7 @@
 import { Color, type Object3D, OrthographicCamera, Scene, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { DEFAULT_LIGHTING, ID_STEP, ShadeMode, type MaterialLibrary } from './materials';
 import { MAGIC_RAMPS, rampIndex } from './palette';
+import { portraitFocus, type PortraitHead, type PortraitSettings } from './portrait';
 import { dither, downscaleFrame, type IndexedFrame, type PostprocessSettings } from './postprocess';
 
 /** Rendered directions; the west-facing ones are mirrored from their east twins. */
@@ -89,10 +90,68 @@ export class SpriteRenderer {
    */
   renderFrames(root: Object3D, count: number, setFrame: (i: number) => number | void, s: SpriteSettings): Map<Direction, IndexedFrame[]> {
     const ss = this.supersampleFor(s);
-    const size = s.frameSize * ss;
-    this.prepare(size);
     this.configureCamera(this.camera, s);
+    const result = new Map<Direction, IndexedFrame[]>();
+    this.isolate(root, [], s.frameSize * ss, () => {
+      for (const dir of DIRECTIONS) {
+        root.rotation.y = (DIRECTION_YAW[dir] * Math.PI) / 180;
+        result.set(dir, Array.from({ length: count }, (_, i) => this.frame(setFrame(i) ?? 1, i, ss, s)));
+      }
+    });
+    return result;
+  }
 
+  /**
+   * Renders a close-up of `head` (or all of `root` without one): the portrait's square frame,
+   * turned and seen from its own camera, `count` frames as `setFrame` poses them. The camera is
+   * placed from the first frame and stays put, so a looping portrait doesn't jitter. `hide` is
+   * kept out of the picture (a rider's mount, whose neck would cover the face).
+   */
+  renderPortrait(
+    root: Object3D,
+    opts: { count: number; setFrame: (i: number) => number | void; head: PortraitHead | null; hide?: Object3D[]; portrait: PortraitSettings; sprite: SpriteSettings },
+  ): IndexedFrame[] {
+    const { portrait: p, sprite } = opts;
+    const s = { ...sprite, frameSize: p.size };
+    const ss = this.supersampleFor(s);
+    const frames: IndexedFrame[] = [];
+    this.isolate(root, opts.hide ?? [], p.size * ss, () => {
+      root.rotation.y = (p.turn * Math.PI) / 180;
+      const firstOpacity = opts.setFrame(0) ?? 1;
+      const { center, span } = portraitFocus(root, opts.head, p.zoom);
+      const cam = this.camera;
+      cam.left = cam.bottom = -span / 2;
+      cam.right = cam.top = span / 2;
+      cam.near = 0.1;
+      cam.far = 100;
+      const e = (p.elevation * Math.PI) / 180;
+      cam.position.set(center.x, center.y + Math.sin(e) * 20, center.z + Math.cos(e) * 20);
+      cam.lookAt(center);
+      cam.updateProjectionMatrix();
+      for (let i = 0; i < opts.count; i++) {
+        const opacity = i === 0 ? firstOpacity : (opts.setFrame(i) ?? 1);
+        frames.push(this.frame(opacity, i, ss, s));
+      }
+    });
+    return frames;
+  }
+
+  /** One frame of the subject as it's posed now: both passes, downscaled, dithered see-through. */
+  private frame(opacity: number, i: number, ss: number, s: SpriteSettings): IndexedFrame {
+    const size = s.frameSize * ss;
+    this.pass(ShadeMode.Id, this.idBuf, size);
+    this.pass(ShadeMode.Light, this.lightBuf, size);
+    const frame = downscaleFrame(this.idBuf, this.lightBuf, s.frameSize, s.frameSize, ss, ID_STEP, s);
+    // dithered after the outline, so the edge isn't drawn around every hole
+    return dither(frame, opacity, i, GLOW_RAMPS);
+  }
+
+  /**
+   * Runs `render` with the target set up at `size`, only `root` visible (minus `hide`) on a
+   * transparent background, then puts the renderer, scene and root's facing back.
+   */
+  private isolate(root: Object3D, hide: Object3D[], size: number, render: () => void): void {
+    this.prepare(size);
     const prevTarget = this.renderer.getRenderTarget();
     const prevClear = this.renderer.getClearColor(new Color());
     const prevAlpha = this.renderer.getClearAlpha();
@@ -100,26 +159,12 @@ export class SpriteRenderer {
     const prevBackground = this.scene.background;
     // a scene background would fill the target opaquely and destroy the transparency
     this.scene.background = null;
-    const hidden = this.scene.children.filter((c) => c !== root && c.visible);
+    const hidden = [...this.scene.children.filter((c) => c !== root), ...hide].filter((c) => c.visible);
     hidden.forEach((c) => (c.visible = false));
     this.renderer.setRenderTarget(this.target);
     this.renderer.setClearColor(0x000000, 0);
-
-    const result = new Map<Direction, IndexedFrame[]>();
     try {
-      for (const dir of DIRECTIONS) {
-        root.rotation.y = (DIRECTION_YAW[dir] * Math.PI) / 180;
-        const frames: IndexedFrame[] = [];
-        for (let i = 0; i < count; i++) {
-          const opacity = setFrame(i) ?? 1;
-          this.pass(ShadeMode.Id, this.idBuf, size);
-          this.pass(ShadeMode.Light, this.lightBuf, size);
-          const frame = downscaleFrame(this.idBuf, this.lightBuf, s.frameSize, s.frameSize, ss, ID_STEP, s);
-          // dithered after the outline, so the edge isn't drawn around every hole
-          frames.push(dither(frame, opacity, i, GLOW_RAMPS));
-        }
-        result.set(dir, frames);
-      }
+      render();
     } finally {
       this.mats.setMode(ShadeMode.Preview);
       this.renderer.setRenderTarget(prevTarget);
@@ -128,7 +173,6 @@ export class SpriteRenderer {
       this.scene.background = prevBackground;
       hidden.forEach((c) => (c.visible = true));
     }
-    return result;
   }
 
   private pass(mode: ShadeMode, buf: Uint8Array, size: number): void {

@@ -1,4 +1,5 @@
 import GUI, { type Controller } from 'lil-gui';
+import type { Object3D } from 'three';
 import { beastAnimations } from './anim/beast-anims';
 import { BUILDING_ROWS, buildingAnimations } from './anim/building-anims';
 import { mountedAnimations } from './anim/mounted-anims';
@@ -10,11 +11,12 @@ import { loadModelFiles, MODEL_EXTENSIONS } from './custom/load';
 import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
 import { downloadBinary, downloadJson, downloadPng, downloadTeamMask, sheetToCanvas } from './export/download';
 import { exportGlb, rowDuration } from './export/model';
-import { packSheet, type AnimationFrames, type Sheet } from './export/packer';
+import { packSheet, packStrip, teamMeta, type AnimationFrames, type Sheet } from './export/packer';
 import { openPlayground, type PlaygroundOptions, type Projectile } from './playground/playground';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
-import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
-import type { Outline } from './render/postprocess';
+import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, PALETTE, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
+import { DEFAULT_PORTRAIT, PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES, type PortraitHead, type PortraitSettings } from './render/portrait';
+import { framePortrait, type IndexedFrame, type Outline } from './render/postprocess';
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings } from './render/spriteRenderer';
 import { UndoHistory } from './history';
 import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
@@ -28,7 +30,7 @@ import { ARMORS, BODIES, CAPES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems
 import { applyVehiclePose, buildVehicle, disposeVehicle, type Vehicle } from './unit/vehicle';
 import { randomVehicle, VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
-import { CompassPreview } from './ui/spritePreview';
+import { CompassPreview, StripPreview } from './ui/spritePreview';
 import { initSplitter } from './ui/splitter';
 import './style.css';
 
@@ -77,6 +79,8 @@ const state = {
     elevation: DEFAULT_LIGHTING.elevation,
     fill: DEFAULT_LIGHTING.fill,
   },
+  /** The close-up for a selection panel or command card. */
+  portrait: { ...DEFAULT_PORTRAIT } as PortraitSettings,
   previewAnim: 'walk' as AnimationName,
   /** Which rows go into the exported sheet; the previews always show them all. */
   exportAnims: Object.fromEntries(ANIMATION_NAMES.map((n) => [n, BASIC_ANIMS.includes(n)])) as Record<AnimationName, boolean>,
@@ -135,6 +139,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
   'sprite.frameSize': FRAME_SIZES,
   'sprite.outline': OUTLINES,
   'sprite.supersample': SUPERSAMPLES,
+  'portrait.size': PORTRAIT_SIZES,
+  'portrait.background': PORTRAIT_BACKGROUNDS,
 };
 
 /**
@@ -142,8 +148,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
  * stays behind, since its file can't travel in a URL. The objects are state's own.
  */
 function sharedSettings() {
-  const { kind, preset, unit, beast, mounted, vehicle, building, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team } = state;
-  return { kind, preset, unit, beast, mounted, vehicle, building, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team };
+  const { kind, preset, unit, beast, mounted, vehicle, building, frames, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team } = state;
+  return { kind, preset, unit, beast, mounted, vehicle, building, frames, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team };
 }
 
 /** Applies the settings of a share link the page was opened from, before the GUI is built. */
@@ -182,6 +188,7 @@ const sprites = new SpriteRenderer(view.renderer, view.scene, mats);
 const compass = new CompassPreview(document.getElementById('compass') as HTMLCanvasElement);
 const sheetCanvas = document.getElementById('sheet') as HTMLCanvasElement;
 const effectsCanvas = document.getElementById('effects') as HTMLCanvasElement;
+const portraitPreview = new StripPreview(document.getElementById('portrait') as HTMLCanvasElement);
 const side = document.getElementById('side')!;
 
 let unit: Humanoid | null = null;
@@ -289,8 +296,13 @@ function sheetRows(): Playable[] {
   }));
 }
 
+/** What the sheet is rendered from: the loaded model or the procedural unit. */
+function subjectRoot(): Object3D | undefined {
+  return state.source === 'model' ? custom?.root : (unit ?? beast ?? mounted ?? vehicle ?? building)?.root;
+}
+
 function regenerate(): void {
-  const root = state.source === 'model' ? custom?.root : (unit ?? beast ?? mounted ?? vehicle ?? building)?.root;
+  const root = subjectRoot();
   if (!root) return;
   mats.setLighting({ ...state.lighting, thresholds: state.sprite.thresholds });
   sprites.configureCamera(view.ortho, state.sprite);
@@ -309,7 +321,49 @@ function regenerate(): void {
     `${sheet.width}×${sheet.height} · ${sheet.meta.columns}×${sheet.meta.rows} frames of ${state.sprite.frameSize}px` +
     (ss < state.sprite.supersample ? ` · supersample ${ss} (max for this frame size)` : '');
   renderEffects();
+  renderPortrait();
   applyTeam();
+}
+
+// --- portrait: a head-and-shoulders close-up ------------------------------------
+
+let portraitFrames: IndexedFrame[] = [];
+/** Plays the portrait's loop in the time the idle row takes. */
+let portraitFps = 1;
+
+/** The head the portrait closes in on; vehicles, buildings and custom models are framed whole. */
+function portraitHead(): PortraitHead | null {
+  if (state.source === 'model') return null;
+  const rig = unit ?? beast ?? mounted?.rider;
+  return rig ? { joint: rig.joints.head, ...rig.skull } : null;
+}
+
+/**
+ * Renders the portrait from the idle row (the first row if there's none): its first frame for
+ * a still, or the whole loop over the portrait's frames, with its background and border.
+ */
+function renderPortrait(): void {
+  const root = subjectRoot();
+  const row = playables.find((a) => a.name === 'idle') ?? playables[0];
+  if (!root || !row) return;
+  const p = state.portrait;
+  const frames = sprites.renderPortrait(root, {
+    count: p.frames,
+    setFrame: (i) => row.apply(frameTime({ frames: p.frames, loop: true }, i)),
+    head: portraitHead(),
+    // the mount's neck would be in front of the rider's face
+    hide: state.source === 'unit' && mounted ? [mounted.beast.root] : [],
+    portrait: p,
+    sprite: state.sprite,
+  });
+  portraitFrames = frames.map((f) => framePortrait(f, p.background, p.border));
+  portraitFps = Math.round(((row.fps * p.frames) / row.frames) * 100) / 100;
+  document.getElementById('portraitInfo')!.textContent =
+    `${p.size}×${p.size}` + (p.frames > 1 ? ` · ${p.frames} frames at ${portraitFps} fps` : '');
+}
+
+function showPortrait(): void {
+  portraitPreview.setFrames(portraitFrames, teamPalette(state.team));
 }
 
 // --- effects sheet: projectiles and hit effects ---------------------------------
@@ -352,6 +406,7 @@ function applyTeam(): void {
   mats.setRampColors('team', teamRgb(state.team));
   if (sheet) sheetToCanvas(sheet, teamPalette(state.team), sheetCanvas);
   if (effectsSheet) sheetToCanvas(effectsSheet, teamPalette(state.team), effectsCanvas);
+  showPortrait();
   showPreviewAnim();
   fitPreviews();
 }
@@ -361,6 +416,7 @@ function fitPreviews(): void {
   // the side panel's and each preview panel's horizontal padding
   const avail = side.clientWidth - 2 * 12 - 2 * 10;
   compass.fitWidth(avail);
+  portraitPreview.fitWidth(avail);
   // sheets wider than the panel (big frames) are shown scaled down
   for (const [s, canvas] of [[sheet, sheetCanvas], [effectsSheet, effectsCanvas]] as const) {
     if (s) canvas.style.width = `${s.width > avail ? avail : s.width * Math.floor(avail / s.width)}px`;
@@ -631,6 +687,36 @@ function exportEffects(): void {
   downloadJson({ ...s.meta, image, imageTeam: state.team, ...fields, magic: magicColor() }, `${name}.json`);
 }
 
+/** The portrait in the selected team colour: a still, or its loop as a strip, left to right. */
+function exportPortrait(): void {
+  if (portraitFrames.length === 0) return;
+  const s = packStrip(portraitFrames);
+  const p = state.portrait;
+  const name = `${exportName()}-portrait`;
+  const image = `${name}-${state.team}.png`;
+  const fields = imageFields(name);
+  void downloadPng(s, image, teamPalette(state.team));
+  if (fields.teamMask) setTimeout(() => void downloadTeamMask(s, fields.teamMask as string), 250);
+  downloadJson(
+    {
+      frameWidth: p.size,
+      frameHeight: p.size,
+      frames: portraitFrames.length,
+      fps: portraitFps,
+      loop: true,
+      background: p.background,
+      border: p.border,
+      palette: PALETTE,
+      team: teamMeta(),
+      image,
+      imageTeam: state.team,
+      ...fields,
+      ...exportSource(),
+    },
+    `${name}.json`,
+  );
+}
+
 const actions = {
   randomize() {
     randomize(Math.floor(Math.random() * 1e6));
@@ -641,6 +727,7 @@ const actions = {
   exportAllTeams,
   exportModel,
   exportEffects,
+  exportPortrait,
 };
 
 /** The seed of the generator in use, so one controller serves both. */
@@ -886,6 +973,20 @@ spriteFolder.add(state.sprite, 'outline', OUTLINES).onFinishChange(queueRegenera
 spriteFolder.add(state.sprite, 'coverage', 0.1, 0.9, 0.05).name('min coverage').onFinishChange(queueRegenerate);
 spriteFolder.add(state.sprite, 'supersample', SUPERSAMPLES).onFinishChange(queueRegenerate);
 
+/** Portrait controls only re-render the portrait, not the sheet. */
+const updatePortrait = () => {
+  renderPortrait();
+  showPortrait();
+};
+const portraitFolder = restoreOpen(gui.addFolder('Portrait'), true);
+portraitFolder.add(state.portrait, 'size', PORTRAIT_SIZES).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'zoom', 0.5, 2, 0.05).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'turn', -90, 90, 1).name('turn (°)').onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'elevation', 0, 45, 1).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'frames', 1, 12, 1).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'background', PORTRAIT_BACKGROUNDS).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'border').onFinishChange(updatePortrait);
+
 const lightFolder = restoreOpen(gui.addFolder('Lighting'), true);
 lightFolder.add(state.lighting, 'azimuth', -180, 180, 1).name('light from ← →').onFinishChange(queueRegenerate);
 lightFolder.add(state.lighting, 'elevation', -30, 90, 1).name('light height').onFinishChange(queueRegenerate);
@@ -908,6 +1009,7 @@ exportFolder.add(actions, 'export').name('💾 export PNG + JSON');
 exportFolder.add(actions, 'exportAllTeams').name('💾 export all team colors');
 exportFolder.add(actions, 'exportModel').name('💾 export 3D model (.glb)');
 exportFolder.add(actions, 'exportEffects').name('💾 export effects');
+exportFolder.add(actions, 'exportPortrait').name('💾 export portrait');
 
 // --- custom model -------------------------------------------------------------
 
@@ -1118,6 +1220,7 @@ function tick(now: number): void {
     mats.setOpacity(anim.apply(t) ?? 1);
     compass.draw(frame);
   }
+  if (portraitPreview.frameCount > 1) portraitPreview.draw(Math.floor(((now - start) / 1000) * portraitFps));
   view.render();
   requestAnimationFrame(tick);
 }

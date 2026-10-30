@@ -75,12 +75,27 @@ export function packSheet(anims: AnimationFrames[], anchor: { x: number; y: numb
       anchor,
       animations,
       palette: PALETTE,
-      team: {
-        indices: TEAM_INDICES,
-        colors: Object.fromEntries(TEAM_COLOR_NAMES.map((t) => [t, teamRgb(t)])) as Record<TeamColor, RGB[]>,
-      },
+      team: teamMeta(),
     },
   };
+}
+
+/** Palette entries to swap per player, and what to swap them to for each team colour. */
+export function teamMeta(): SheetMeta['team'] {
+  return {
+    indices: TEAM_INDICES,
+    colors: Object.fromEntries(TEAM_COLOR_NAMES.map((t) => [t, teamRgb(t)])) as Record<TeamColor, RGB[]>,
+  };
+}
+
+/** Frames of the same size side by side, left to right. */
+export function packStrip(frames: IndexedFrame[]): Pick<Sheet, 'width' | 'height' | 'data'> {
+  if (frames.length === 0) throw new Error('packStrip: no frames');
+  const { width: fw, height } = frames[0];
+  const width = fw * frames.length;
+  const data = new Uint8Array(width * height);
+  frames.forEach((f, i) => blit(data, width, f, i * fw, 0));
+  return { width, height, data };
 }
 
 function blit(dst: Uint8Array, dstW: number, f: IndexedFrame, x0: number, y0: number): void {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { indexedToRgba, packSheet, type AnimationFrames } from '../src/export/packer';
+import { indexedToRgba, packSheet, packStrip, type AnimationFrames } from '../src/export/packer';
 import { PALETTE } from '../src/render/palette';
 import type { IndexedFrame } from '../src/render/postprocess';
 import { DIRECTIONS, type Direction } from '../src/render/spriteRenderer';
@@ -41,5 +41,14 @@ describe('packSheet', () => {
     const rgba = indexedToRgba(new Uint8Array([0, 5, PALETTE.length - 1]));
     expect(Array.from(rgba.slice(0, 4))).toEqual([0, 0, 0, 0]);
     expect(Array.from(rgba.slice(4, 8))).toEqual([...PALETTE[5], 255]);
+  });
+});
+
+describe('packStrip', () => {
+  it('puts frames side by side, left to right', () => {
+    const strip = packStrip([solid(1), solid(2), solid(3)]);
+    expect([strip.width, strip.height]).toEqual([6, 2]);
+    expect(Array.from(strip.data.subarray(0, 6))).toEqual([1, 1, 2, 2, 3, 3]);
+    expect(Array.from(strip.data.subarray(6))).toEqual([1, 1, 2, 2, 3, 3]);
   });
 });

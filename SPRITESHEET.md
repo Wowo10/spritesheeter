@@ -227,6 +227,25 @@ Differences from a unit sheet:
 - **One-shots end faint, not empty.** `impact` and `puff` play once and fade to about a quarter of their opacity by the last frame. Remove the effect once that frame has played. Don't hold it as you would a corpse.
 - **Team colour:** only the arrow's fletching uses the team ramp, so recolour it per player in the same ways as units ([Team colours](#team-colours)).
 
+## The portrait
+
+**💾 export portrait** writes a close-up of the unit for a selection panel or command card: `<name>-portrait-<team>.png` and `<name>-portrait.json`. It's indexed with the same palette as the sheet, so it recolours per team the same ways ([Team colours](#team-colours)).
+
+- **One direction, no anchor.** A portrait is a single square view, so there are no direction columns or ground anchor to deal with. Draw it where your UI wants it.
+- **A still or a strip.** `frames` is 1 for a still. Otherwise the frames run left to right, `frameWidth` apart, and loop at `fps` (the unit's `idle`, close up). Frame `i` is at `x = i * frameWidth`, `y = 0`.
+- **The background is part of the image.** With `background` set to `dark` or `team` the frame is filled, so it's opaque. A `team` background uses the darkest team shade, which means it's in the team mask and swaps with the rest of the team colour. `border` is a 1 px bevel drawn over the edge pixels in steel shades.
+
+```json
+{
+  "frameWidth": 64, "frameHeight": 64,
+  "frames": 4, "fps": 4, "loop": true,
+  "background": "dark", "border": true,
+  "palette": [[0, 0, 0], ...],
+  "team": { "indices": [...], "colors": { ... } },
+  "image": "swordsman-1-portrait-red.png", "imageTeam": "red", "imageFormat": "indexed"
+}
+```
+
 ## Team colours
 
 Units use a reserved 4-shade "team" ramp for their team-coloured parts. There are three ways to get coloured units into your game:

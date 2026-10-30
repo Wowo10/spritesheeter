@@ -27,6 +27,8 @@ export interface Humanoid {
   grips: Record<Hand, Group>;
   /** A gun's muzzle flash and smoke, per hand holding one; shown when a pose fires it. */
   muzzles: Partial<Record<Hand, { flash: Object3D; smoke: Object3D }>>;
+  /** Middle of the head in the head joint's space, and its size, headgear aside; framed by portraits. */
+  skull: { center: [number, number, number]; size: number };
 }
 
 interface Outfit {
@@ -231,7 +233,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     b.box(fx, p.magic, [0.07, 0.07, 0.07], [Math.cos(a) * 0.27, Math.sin(a) * 0.27, 0], [45, 45, 0]);
   }
 
-  return { root, body, joints, hipHeight, fx, load, shadow, grips, muzzles };
+  return { root, body, joints, hipHeight, fx, load, shadow, grips, muzzles, skull: { center: [0, headCenter, 0], size: head * 1.05 } };
 }
 
 export function applyPose(unit: Humanoid, pose: Pose): void {

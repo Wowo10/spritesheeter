@@ -1,4 +1,5 @@
-import { OUTLINE_INDEX, paletteIndex, SHADES } from './palette';
+import { OUTLINE_INDEX, paletteIndex, rampIndex, SHADES } from './palette';
+import type { PortraitBackground } from './portrait';
 
 /** Sprite frame as palette indices, row-major from the top-left; 0 is transparent. */
 export interface IndexedFrame {
@@ -144,6 +145,34 @@ export function mirrorFrame(f: IndexedFrame): IndexedFrame {
   for (let y = 0; y < f.height; y++) {
     for (let x = 0; x < f.width; x++) {
       data[y * f.width + x] = f.data[y * f.width + (f.width - 1 - x)];
+    }
+  }
+  return { ...f, data };
+}
+
+/** What fills the transparent pixels of a portrait; the team's darkest shade, so the unit stands out. */
+export const PORTRAIT_FILL: Record<PortraitBackground, number> = {
+  none: 0,
+  dark: paletteIndex(rampIndex('dark'), 1),
+  team: paletteIndex(rampIndex('team'), 0),
+};
+/** The bevel: lit along the top and left, in shadow along the bottom and right. */
+export const BEVEL_LIGHT = paletteIndex(rampIndex('steel'), 2);
+export const BEVEL_DARK = paletteIndex(rampIndex('steel'), 0);
+
+/** A portrait's background behind the unit, and a 1 px bevel drawn over its edge pixels. */
+export function framePortrait(f: IndexedFrame, background: PortraitBackground, border: boolean): IndexedFrame {
+  const fill = PORTRAIT_FILL[background];
+  const data = f.data.map((v) => v || fill);
+  if (border) {
+    const { width: w, height: h } = f;
+    for (let x = 0; x < w; x++) {
+      data[x] = BEVEL_LIGHT;
+      data[(h - 1) * w + x] = BEVEL_DARK;
+    }
+    for (let y = 0; y < h; y++) {
+      data[y * w] = BEVEL_LIGHT;
+      data[y * w + w - 1] = BEVEL_DARK;
     }
   }
   return { ...f, data };

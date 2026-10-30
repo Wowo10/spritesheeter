@@ -94,7 +94,7 @@ export function buildHelmet(b: PartBuilder, head: Object3D, kind: Helmet, fit: H
       break;
     case 'full':
       b.box(head, p.metal, [s * 1.14, s * 1.12, s * 1.14], [0, cy + s * 0.02, 0]);
-      b.box(head, 'dark', [s * 0.8, s * 0.12, s * 0.04], [0, cy + s * 0.08, s * 0.58]); // visor slit
+      b.box(head, 'dark', [s * 0.94, s * 0.22, s * 0.04], [0, cy + s * 0.08, s * 0.58]); // visor slit
       b.cone(head, p.metal, s * 0.1, s * 0.3, [0, cy + s * 0.72, 0]);
       break;
     case 'hood':

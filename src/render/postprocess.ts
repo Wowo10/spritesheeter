@@ -85,21 +85,19 @@ export function downscaleFrame(
   return settings.outline === 'none' ? frame : outline(frame, settings.outline);
 }
 
-const NEIGHBOURS: [number, number][] = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
+/** Whether pixel (x, y) is opaque; outside the frame counts as transparent. */
+function opaqueAt(f: IndexedFrame, x: number, y: number): boolean {
+  return x >= 0 && y >= 0 && x < f.width && y < f.height && f.data[y * f.width + x] !== 0;
+}
 
+/** Whether any of the 4 neighbours of (x, y) is opaque (or, with wantOpaque false, transparent). */
 function touches(f: IndexedFrame, x: number, y: number, wantOpaque: boolean): boolean {
-  for (const [dx, dy] of NEIGHBOURS) {
-    const nx = x + dx;
-    const ny = y + dy;
-    const opaque = nx >= 0 && ny >= 0 && nx < f.width && ny < f.height && f.data[ny * f.width + nx] !== 0;
-    if (opaque === wantOpaque) return true;
-  }
-  return false;
+  return (
+    opaqueAt(f, x + 1, y) === wantOpaque ||
+    opaqueAt(f, x - 1, y) === wantOpaque ||
+    opaqueAt(f, x, y + 1) === wantOpaque ||
+    opaqueAt(f, x, y - 1) === wantOpaque
+  );
 }
 
 /**
@@ -133,12 +131,15 @@ const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 export function dither(f: IndexedFrame, opacity: number, phase: number, glow: readonly number[] = []): IndexedFrame {
   if (opacity >= 1) return f;
   const data = new Uint8Array(f.data);
+  // palette indices in the glowing ramps
+  const glows = new Uint8Array(256);
+  for (const ramp of glow) glows.fill(1, paletteIndex(ramp, 0), paletteIndex(ramp, SHADES));
   for (let y = 0; y < f.height; y++) {
     for (let x = 0; x < f.width; x++) {
       const i = y * f.width + x;
       const v = f.data[i];
       if (v === 0) continue;
-      const a = glow.includes(Math.floor((v - 1) / SHADES)) ? 2 * opacity : opacity;
+      const a = glows[v] ? 2 * opacity : opacity;
       if (BAYER4[(y % 4) * 4 + ((x + phase) % 4)] + 0.5 >= 16 * a) data[i] = 0;
     }
   }

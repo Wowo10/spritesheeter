@@ -23,6 +23,8 @@ export class CompassPreview {
   private frameSize = 32;
   /** Display width limit; frames too big to fit even at 1x are shown scaled down. */
   private maxWidth = Infinity;
+  /** Frame on the canvas now, or -1 when it must be drawn again. */
+  private drawn = -1;
   private readonly ctx: CanvasRenderingContext2D;
 
   constructor(
@@ -41,6 +43,7 @@ export class CompassPreview {
   private resize(): void {
     if (Number.isFinite(this.maxWidth)) this.scale = Math.max(1, Math.floor(this.maxWidth / (this.frameSize * 3)));
     const px = this.frameSize * this.scale * 3;
+    this.drawn = -1;
     if (this.canvas.width !== px) {
       this.canvas.width = px;
       this.canvas.height = px;
@@ -60,7 +63,10 @@ export class CompassPreview {
     this.resize();
   }
 
+  /** Draws the given frame; called every animation frame, so it does nothing if that's already shown. */
   draw(frameIndex: number): void {
+    if (frameIndex === this.drawn) return;
+    this.drawn = frameIndex;
     const cell = this.frameSize * this.scale;
     this.ctx.imageSmoothingEnabled = false;
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);

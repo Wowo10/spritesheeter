@@ -237,24 +237,63 @@ function decayRow(death: Playable, rot: (t: number) => void): Playable {
   };
 }
 
-/** Renders the sheet, effects and portrait again, then shades and shows them. */
+/** Bumped by every render, so one still going knows it's been overtaken and stops. */
+let renderId = 0;
+/** The render in progress, or the last one. */
+let rendering: Promise<void> = Promise.resolve();
+/** How long a render works before letting the page paint and respond. */
+const RENDER_SLICE_MS = 30;
+
+/** Renders the sheet, effects and portrait again, a slice at a time, then shades and shows them. */
 function regenerate(): void {
+  rendering = renderAll(++renderId);
+}
+
+/** Settles once nothing is being rendered, however many renders take over from each other meanwhile. */
+async function renderSettled(): Promise<void> {
+  let current: Promise<void>;
+  do {
+    current = rendering;
+    await current;
+  } while (current !== rendering);
+}
+
+async function renderAll(id: number): Promise<void> {
   if (!subject) return;
   const { root } = subject;
   mats.setLighting({ ...state.lighting, thresholds: state.sprite.thresholds });
   sprites.configureCamera(view.ortho, state.sprite);
   view.fitOrtho();
 
+  let sliceStart = performance.now();
+  /** Lets the page paint if this slice has run long; false once a newer render has taken over. */
+  const goOn = async (): Promise<boolean> => {
+    if (id !== renderId) return false;
+    if (performance.now() - sliceStart > RENDER_SLICE_MS) {
+      await new Promise(requestAnimationFrame);
+      sliceStart = performance.now();
+    }
+    return id === renderId;
+  };
+
   playables = sheetRows(subject);
-  sampled = playables.map((a) => ({
-    name: a.name,
-    fps: a.fps,
-    loop: a.loop,
-    hold: a.hold,
-    frames: sprites.renderFrames(root, a.frames, (i) => a.apply(frameTime(a, i)), state.sprite),
-  }));
-  renderEffects();
+  const rows = playables;
+  const done: SampledAnimation[] = [];
+  // the previewed row first, so the change shows there soonest
+  const preview = Math.max(0, rows.findIndex((a) => a.name === state.previewAnim));
+  const order = [preview, ...rows.keys()].filter((i, k, all) => all.indexOf(i) === k);
+  for (const [k, i] of order.entries()) {
+    const a = rows[i];
+    const frames = await sprites.renderFrames(root, a.frames, (f) => a.apply(frameTime(a, f)), state.sprite, goOn);
+    if (!frames) return;
+    done[i] = { name: a.name, fps: a.fps, loop: a.loop, hold: a.hold, frames };
+    if (k === 0 && a.name === state.previewAnim) compass.setFrames(shadeSprites(done[i].frames, state.sprite), teamPalette(state.team));
+    document.getElementById('sheetInfo')!.textContent = `rendering… ${k + 1}/${rows.length} rows`;
+  }
+  if (!(await renderEffects(goOn))) return;
+  if (!(await goOn())) return;
   renderPortrait();
+  sampled = done;
   shade();
 }
 
@@ -328,28 +367,33 @@ const effectsSprite = () => ({ ...state.sprite, anchorY: 0.5 });
 
 /**
  * Renders the effects in the unit's magic colour, at the unit's scale and with its sprite and
- * lighting settings. shadeEffects finishes them.
+ * lighting settings, unless they're as last rendered; shadeEffects finishes them. False if a
+ * newer render took over (see renderFrames).
  */
-function renderEffects(): void {
+async function renderEffects(goOn: () => Promise<boolean>): Promise<boolean> {
   const magic = magicColor();
   // shading settings aside: shadeEffects applies those
   const { outline: _, coverage: __, thresholds: ___, ...shape } = state.sprite;
   const key = JSON.stringify({ magic, sprite: shape, lighting: state.lighting });
-  if (key === effectsKey) return;
-  effectsKey = key;
+  if (key === effectsKey) return true;
+  // until they're all rendered again, they're not as last rendered
+  effectsKey = '';
   if (effects) disposeEffects(effects);
   effects = buildEffects(mats, magic);
+  // kept in the scene only to be rendered
+  effects.root.visible = false;
   view.scene.add(effects.root);
 
-  const root = effects.root;
-  effectsSampled = effects.defs.map((d) => ({
-    name: d.name,
-    fps: d.fps,
-    loop: d.loop,
-    frames: sprites.renderFrames(root, d.frames, (i) => d.apply(frameTime(d, i)), effectsSprite()),
-  }));
-  // kept in the scene only to be rendered
-  root.visible = false;
+  const { root, defs } = effects;
+  const anims: SampledAnimation[] = [];
+  for (const d of defs) {
+    const frames = await sprites.renderFrames(root, d.frames, (i) => d.apply(frameTime(d, i)), effectsSprite(), goOn);
+    if (!frames) return false;
+    anims.push({ name: d.name, fps: d.fps, loop: d.loop, frames });
+  }
+  effectsSampled = anims;
+  effectsKey = key;
+  return true;
 }
 
 function shadeEffects(): void {
@@ -443,7 +487,8 @@ function imageFields(name: string): Record<string, unknown> {
   return { imageFormat: 'indexed', ...(state.teamMask ? { teamMask: `${name}-team-mask.png` } : {}) };
 }
 
-function exportSheet(): void {
+async function exportSheet(): Promise<void> {
+  await renderSettled();
   const s = exportedSheet();
   if (!s) return;
   const name = exportName();
@@ -455,7 +500,8 @@ function exportSheet(): void {
 }
 
 /** One PNG per team colour, plus a JSON listing them. Downloads are staggered so browsers accept them. */
-function exportAllTeams(): void {
+async function exportAllTeams(): Promise<void> {
+  await renderSettled();
   const s = exportedSheet();
   if (!s) return;
   const name = exportName();
@@ -470,7 +516,8 @@ function exportAllTeams(): void {
 // --- playground -------------------------------------------------------------
 
 /** Two of the unit, in the team colour and a rival's, to order around on a grid. */
-function showPlayground(): void {
+async function showPlayground(): Promise<void> {
+  await renderSettled();
   if (!sheet || !subject) return;
   const unit = subject.playground();
   if (!unit) {
@@ -579,6 +626,7 @@ unitFolder
  * clip (not just the checked ones), timed like the sheet. A loaded model already has a file.
  */
 async function exportModel(): Promise<void> {
+  await renderSettled();
   if (state.source === 'model' || !subject) {
     alert('Export model works on the procedural unit. Switch "show" to the procedural unit to export it.');
     return;
@@ -590,7 +638,8 @@ async function exportModel(): Promise<void> {
 }
 
 /** The effects sheet in the selected team colour (only the arrow's fletching is team-coloured). */
-function exportEffects(): void {
+async function exportEffects(): Promise<void> {
+  await renderSettled();
   const s = effectsSheet;
   if (!s) return;
   const name = `${exportName()}-effects`;
@@ -602,7 +651,8 @@ function exportEffects(): void {
 }
 
 /** The portrait in the selected team colour: a still, or its loop as a strip, left to right. */
-function exportPortrait(): void {
+async function exportPortrait(): Promise<void> {
+  await renderSettled();
   if (portraitFrames.length === 0) return;
   const s = packStrip(portraitFrames);
   const p = state.portrait;

@@ -93,21 +93,35 @@ export class SpriteRenderer {
   }
 
   /**
-   * Renders `count` frames in every direction, so the render target is set up once per batch.
-   * `setFrame(i)` puts the subject in its i-th frame and may return its opacity (default 1);
-   * `root` is turned to face each direction. The frames are left to be shaded (shadeSprites),
-   * so they can be shaded again with other settings without rendering them again.
+   * Renders `count` frames in every direction. `setFrame(i)` puts the subject in its i-th
+   * frame and may return its opacity (default 1); `root` is turned to face each direction.
+   * Before each frame, `goOn` may let the page get on with other things, the renderer and
+   * scene put back meanwhile; if it returns false, rendering stops and this returns null.
+   * The frames are left to be shaded (shadeSprites), so they can be shaded again with other
+   * settings without rendering them again.
    */
-  renderFrames(root: Object3D, count: number, setFrame: (i: number) => number | void, s: SpriteSettings): Map<Direction, FrameSamples[]> {
+  async renderFrames(
+    root: Object3D,
+    count: number,
+    setFrame: (i: number) => number | void,
+    s: SpriteSettings,
+    goOn: () => Promise<boolean> = async () => true,
+  ): Promise<Map<Direction, FrameSamples[]> | null> {
     const ss = this.supersampleFor(s);
-    this.configureCamera(this.camera, s);
     const result = new Map<Direction, FrameSamples[]>();
-    this.isolate(root, [], s.frameSize * ss, () => {
-      for (const dir of DIRECTIONS) {
-        root.rotation.y = (DIRECTION_YAW[dir] * Math.PI) / 180;
-        result.set(dir, Array.from({ length: count }, (_, i) => this.frame(setFrame(i) ?? 1, i, ss, s)));
+    for (const dir of DIRECTIONS) {
+      const frames: FrameSamples[] = [];
+      result.set(dir, frames);
+      for (let i = 0; i < count; i++) {
+        if (!(await goOn())) return null;
+        this.isolate(root, [], s.frameSize * ss, () => {
+          // set every frame, as a portrait may have moved the camera in between
+          this.configureCamera(this.camera, s);
+          root.rotation.y = (DIRECTION_YAW[dir] * Math.PI) / 180;
+          frames.push(this.frame(setFrame(i) ?? 1, i, ss, s));
+        });
       }
-    });
+    }
     return result;
   }
 
@@ -157,7 +171,7 @@ export class SpriteRenderer {
 
   /**
    * Runs `render` with the target set up at `size`, only `root` visible (minus `hide`) on a
-   * transparent background, then puts the renderer, scene and root's facing back.
+   * transparent background, then puts the renderer, scene and root's facing and visibility back.
    */
   private isolate(root: Object3D, hide: Object3D[], size: number, render: () => void): void {
     this.prepare(size);
@@ -165,11 +179,14 @@ export class SpriteRenderer {
     const prevClear = this.renderer.getClearColor(new Color());
     const prevAlpha = this.renderer.getClearAlpha();
     const prevYaw = root.rotation.y;
+    const prevVisible = root.visible;
     const prevBackground = this.scene.background;
     // a scene background would fill the target opaquely and destroy the transparency
     this.scene.background = null;
     const hidden = [...this.scene.children.filter((c) => c !== root), ...hide].filter((c) => c.visible);
     hidden.forEach((c) => (c.visible = false));
+    // rendered even if it's kept out of the 3D view (the effects)
+    root.visible = true;
     this.renderer.setRenderTarget(this.target);
     this.renderer.setClearColor(0x000000, 0);
     this.mats.setMode(ShadeMode.Sprite);
@@ -180,6 +197,7 @@ export class SpriteRenderer {
       this.renderer.setRenderTarget(prevTarget);
       this.renderer.setClearColor(prevClear, prevAlpha);
       root.rotation.y = prevYaw;
+      root.visible = prevVisible;
       this.scene.background = prevBackground;
       hidden.forEach((c) => (c.visible = true));
     }

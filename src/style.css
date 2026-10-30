@@ -45,6 +45,18 @@ body.resizing { cursor: col-resize; user-select: none; }
   #side { width: 100%; padding-top: 12px; }
   .lil-gui.root { right: 8px; }
 }
+/* on phones: a card over everything saying the editor wants a desktop, until "continue anyway" */
+.desktopNotice { position: fixed; inset: 0; z-index: 20000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(22, 24, 29, 0.96); }
+.desktopNotice .card { max-width: 360px; background: var(--panel); border-radius: 8px; padding: 20px; text-align: center; }
+.desktopNotice h1 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+.desktopNotice p { margin: 0 0 16px; color: var(--muted); font-size: 14px; }
+.desktopNotice .continue, .desktopNotice .links a { display: inline-block; padding: 10px 16px; border-radius: 6px; font: inherit; font-size: 14px; text-decoration: none; }
+.desktopNotice .continue { width: 100%; background: var(--accent); color: #fff; border: 0; cursor: pointer; }
+.desktopNotice .links { display: flex; gap: 8px; margin-top: 12px; }
+.desktopNotice .links:empty { display: none; }
+.desktopNotice .links a { flex: 1; }
+.desktopNotice .linkKofi { background: #ff5e5b; color: #fff; }
+.desktopNotice .linkGithub { background: #24292f; color: #fff; box-shadow: inset 0 0 0 1px #57606a; }
 /* the playground: a full-page overlay with a top bar and a command bar over its canvas */
 .playground { position: fixed; inset: 0; z-index: 10000; background: #1a1d22; outline: none; user-select: none; }
 .playground canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; touch-action: none; }

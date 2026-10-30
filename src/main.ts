@@ -26,6 +26,7 @@ import { VEHICLE_PRESETS, WEAPONS, type VehicleParams } from './unit/vehicle-par
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
 import { CompassPreview, StripPreview } from './ui/spritePreview';
 import { beastControllers, buildingControllers, humanoidControllers, presetOf, rememberOpen, restoreOpen, vehicleControllers } from './ui/controls';
+import { showDesktopNotice } from './ui/desktopNotice';
 import { initSplitter } from './ui/splitter';
 import './style.css';
 
@@ -744,6 +745,7 @@ const linkButtons = links.map(({ label, account, site, style }) => {
   button.classList.add(style);
   return { controller, button };
 });
+showDesktopNotice(links.map(({ label, account, site, style }) => ({ label, href: site + account, style })));
 if (linkButtons.length > 1) {
   const [first, ...rest] = linkButtons;
   first.controller.domElement.classList.add('buttonRow');

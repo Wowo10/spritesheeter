@@ -1,5 +1,6 @@
 import GUI, { type Controller } from 'lil-gui';
 import { beastAnimations } from './anim/beast-anims';
+import { BUILDING_ROWS, buildingAnimations } from './anim/building-anims';
 import { mountedAnimations } from './anim/mounted-anims';
 import { vehicleAnimations } from './anim/vehicle-anims';
 import { buildEffects, disposeEffects, type Effects } from './effects/effects';
@@ -18,6 +19,8 @@ import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings 
 import { UndoHistory } from './history';
 import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
 import { applyBeastPose, buildBeast, disposeBeast, type Beast } from './unit/beast';
+import { applyBuildingPose, buildBuilding, disposeBuilding, type Building } from './unit/building';
+import { DEFAULT_BUILDING, LIGHT_RAMPS, randomBuilding, ROOF_RAMPS, ROOFS, TRIM_RAMPS, WALL_RAMPS, type BuildingParams } from './unit/building-params';
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
 import { applyMountedPose, buildMounted, copyMounted, disposeMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, randomMounted, type Mounted, type MountedParams } from './unit/mounted';
 import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
@@ -35,7 +38,7 @@ const HOLD_FRAMES = 4;
 const NO_CLIP = '(none)';
 
 /** Animations an export includes until unchecked; the rest (spells, work) only for units that need them. */
-const BASIC_ANIMS: readonly AnimationName[] = ['idle', 'walk', 'attack', 'death'];
+const BASIC_ANIMS: readonly AnimationName[] = ['idle', 'walk', 'attack', 'death', 'build'];
 
 // the big sizes are for buildings and other large models
 const FRAME_SIZES = [32, 48, 64, 96, 128, 160, 192, 256];
@@ -52,7 +55,7 @@ interface Playable {
   apply: (t: number) => number | void;
 }
 
-const KINDS = ['humanoid', 'beast', 'mounted', 'vehicle'] as const;
+const KINDS = ['humanoid', 'beast', 'mounted', 'vehicle', 'building'] as const;
 type Kind = (typeof KINDS)[number];
 
 const state = {
@@ -63,6 +66,8 @@ const state = {
   beast: { ...BEAST_PRESETS.wolf } as BeastParams,
   mounted: copyMounted(MOUNTED_PRESETS.knight),
   vehicle: { ...VEHICLE_PRESETS.catapult } as VehicleParams,
+  /** Buildings have no presets: the seed lays them out. */
+  building: { ...DEFAULT_BUILDING } as BuildingParams,
   frames: { ...DEFAULT_FRAME_COUNTS },
   sprite: { ...DEFAULT_SPRITE_SETTINGS, thresholds: [...DEFAULT_SPRITE_SETTINGS.thresholds] } as SpriteSettings,
   lighting: {
@@ -125,6 +130,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
   ...prefixed('mounted.mount.', BEAST_CHOICES),
   'vehicle.weapon': WEAPONS,
   ...Object.fromEntries(['wood', 'metal', 'cloth', 'flame'].map((k) => [`vehicle.${k}`, RAMP_NAMES])),
+  'building.roof': ROOFS,
+  ...Object.fromEntries(['walls', 'trim', 'roofColor', 'light'].map((k) => [`building.${k}`, RAMP_NAMES])),
   'sprite.frameSize': FRAME_SIZES,
   'sprite.outline': OUTLINES,
   'sprite.supersample': SUPERSAMPLES,
@@ -135,8 +142,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
  * stays behind, since its file can't travel in a URL. The objects are state's own.
  */
 function sharedSettings() {
-  const { kind, preset, unit, beast, mounted, vehicle, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team } = state;
-  return { kind, preset, unit, beast, mounted, vehicle, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team };
+  const { kind, preset, unit, beast, mounted, vehicle, building, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team } = state;
+  return { kind, preset, unit, beast, mounted, vehicle, building, frames, sprite, lighting, previewAnim, exportAnims, teamMask, team };
 }
 
 /** Applies the settings of a share link the page was opened from, before the GUI is built. */
@@ -181,6 +188,7 @@ let unit: Humanoid | null = null;
 let beast: Beast | null = null;
 let mounted: Mounted | null = null;
 let vehicle: Vehicle | null = null;
+let building: Building | null = null;
 let custom: CustomModel | null = null;
 let playables: Playable[] = [];
 let rendered: AnimationFrames[] = [];
@@ -191,10 +199,12 @@ function rebuild(): void {
   if (beast) disposeBeast(beast);
   if (mounted) disposeMounted(mounted);
   if (vehicle) disposeVehicle(vehicle);
+  if (building) disposeBuilding(building);
   unit = null;
   beast = null;
   mounted = null;
   vehicle = null;
+  building = null;
   custom?.root.removeFromParent();
   if (state.source === 'model' && custom) {
     view.scene.add(custom.root);
@@ -207,6 +217,9 @@ function rebuild(): void {
   } else if (state.kind === 'vehicle') {
     vehicle = buildVehicle(state.vehicle, mats);
     view.scene.add(vehicle.root);
+  } else if (state.kind === 'building') {
+    building = buildBuilding(state.building, mats);
+    view.scene.add(building.root);
   } else {
     unit = buildHumanoid(state.unit, mats);
     view.scene.add(unit.root);
@@ -219,7 +232,8 @@ function rebuild(): void {
  * the procedural rows' timing; without any it's a static model, one frame per direction.
  */
 function sheetRows(): Playable[] {
-  const defs = humanoidAnimations(state.frames);
+  // a custom model may be a building going up
+  const defs = [...humanoidAnimations(state.frames), ...buildingAnimations(state.frames).filter((d) => d.name === 'build')];
   const m = custom;
   if (state.source === 'model' && m) {
     const rows = defs.flatMap((d): Playable[] => {
@@ -257,8 +271,15 @@ function sheetRows(): Playable[] {
       apply: (t: number) => applyVehiclePose(v, d.pose(t, state.vehicle, 0)),
     }));
   }
+  const bld = building;
+  if (bld) {
+    return buildingAnimations(state.frames).map((d) => ({
+      ...d,
+      apply: (t: number) => applyBuildingPose(bld, d.pose(t, state.building, 0)),
+    }));
+  }
   const u = unit!;
-  return defs.map((d) => ({
+  return humanoidAnimations(state.frames).map((d) => ({
     ...d,
     apply: (t: number) => {
       const pose = d.pose(t, state.unit, u.hipHeight);
@@ -269,7 +290,7 @@ function sheetRows(): Playable[] {
 }
 
 function regenerate(): void {
-  const root = state.source === 'model' ? custom?.root : (unit ?? beast ?? mounted ?? vehicle)?.root;
+  const root = state.source === 'model' ? custom?.root : (unit ?? beast ?? mounted ?? vehicle ?? building)?.root;
   if (!root) return;
   mats.setLighting({ ...state.lighting, thresholds: state.sprite.thresholds });
   sprites.configureCamera(view.ortho, state.sprite);
@@ -365,6 +386,8 @@ function queueRegenerate(): void {
 
 function exportName(): string {
   if (state.source === 'model' && custom) return custom.name.replace(/[^\w.-]+/g, '_');
+  // buildings have no preset to name them by
+  if (state.kind === 'building') return `building-${state.building.seed}`;
   return `${state.preset}-${procedural().seed}`;
 }
 
@@ -464,6 +487,10 @@ function playgroundUnit(): Pick<PlaygroundOptions, 'stride' | 'attack' | 'cast' 
 /** Two of the unit, in the team colour and a rival's, to order around on a grid. */
 function showPlayground(): void {
   if (!sheet) return;
+  if (building) {
+    alert("The playground is for units that move and fight; buildings don't, yet.");
+    return;
+  }
   openPlayground({
     name: state.source === 'model' && custom ? custom.name : state.preset,
     sheet,
@@ -516,25 +543,26 @@ for (const g of [gui, tools]) {
 const addTeamController = (folder: GUI) => folder.add(state, 'team', TEAM_COLOR_NAMES).name('team color').onChange(applyTeam);
 
 /** The settings of the procedural generator in use. */
-function procedural(): UnitParams | BeastParams | MountedParams | VehicleParams {
-  return { humanoid: state.unit, beast: state.beast, mounted: state.mounted, vehicle: state.vehicle }[state.kind];
+function procedural(): UnitParams | BeastParams | MountedParams | VehicleParams | BuildingParams {
+  return { humanoid: state.unit, beast: state.beast, mounted: state.mounted, vehicle: state.vehicle, building: state.building }[state.kind];
 }
 
-/** The spell colour of the procedural unit; a mounted unit's rider casts, a vehicle's is its fire. */
+/** The spell colour of the procedural unit; a mounted unit's rider casts, a vehicle's is its fire, a building's its lights. */
 function magicColor(): RampName {
   if (state.kind === 'mounted') return state.mounted.rider.magic;
   if (state.kind === 'vehicle') return state.vehicle.flame;
+  if (state.kind === 'building') return state.building.light;
   return (procedural() as UnitParams | BeastParams).magic;
 }
 
-/** The procedural unit's opacity; a mounted unit's is its mount's, and vehicles are solid. */
+/** The procedural unit's opacity; a mounted unit's is its mount's, and vehicles and buildings are solid. */
 function unitOpacity(): number {
   if (state.kind === 'mounted') return state.mounted.mount.opacity;
-  if (state.kind === 'vehicle') return 1;
+  if (state.kind === 'vehicle' || state.kind === 'building') return 1;
   return (procedural() as UnitParams | BeastParams).opacity;
 }
 
-const PRESETS_OF: Record<Kind, Record<string, unknown>> = { humanoid: PRESETS, beast: BEAST_PRESETS, mounted: MOUNTED_PRESETS, vehicle: VEHICLE_PRESETS };
+const PRESETS_OF: Record<Kind, Record<string, unknown>> = { humanoid: PRESETS, beast: BEAST_PRESETS, mounted: MOUNTED_PRESETS, vehicle: VEHICLE_PRESETS, building: {} };
 const presetNames = (kind: Kind) => Object.keys(PRESETS_OF[kind]);
 
 function applyPreset(name: string): void {
@@ -549,11 +577,12 @@ function randomize(seed: number): void {
   if (state.kind === 'beast') state.beast = randomBeast(seed);
   else if (state.kind === 'mounted') state.mounted = randomMounted(seed);
   else if (state.kind === 'vehicle') state.vehicle = randomVehicle(seed);
+  else if (state.kind === 'building') state.building = randomBuilding(seed);
   else state.unit = randomUnit(seed);
 }
 
 /** The preset last picked for each type, so switching back and forth keeps its name. */
-const lastPreset: Record<Kind, string> = { humanoid: 'swordsman', beast: 'wolf', mounted: 'knight', vehicle: 'catapult', [state.kind]: state.preset };
+const lastPreset: Record<Kind, string> = { humanoid: 'swordsman', beast: 'wolf', mounted: 'knight', vehicle: 'catapult', building: 'random', [state.kind]: state.preset };
 /** The type whose settings the Unit folder shows. */
 let shownKind: Kind = state.kind;
 
@@ -567,6 +596,11 @@ unitFolder
     // a rider on its mount (or flying on it) is well over twice as tall as a unit on foot,
     // and siege engines are about as long
     if ((kind === 'mounted' || kind === 'vehicle') && state.sprite.frameSize < 64) state.sprite.frameSize = 64;
+    // buildings are bigger still, and have only some of the rows
+    if (kind === 'building') {
+      if (state.sprite.frameSize < 128) state.sprite.frameSize = 128;
+      if (!BUILDING_ROWS.includes(state.previewAnim)) state.previewAnim = 'idle';
+    }
     rebindUnit();
     rebuild();
   });
@@ -575,7 +609,7 @@ unitFolder
  * clip (not just the checked ones), timed like the sheet. A loaded model already has a file.
  */
 async function exportModel(): Promise<void> {
-  const subject = unit ?? beast ?? mounted ?? vehicle;
+  const subject = unit ?? beast ?? mounted ?? vehicle ?? building;
   if (state.source === 'model' || !subject) {
     alert('Export model works on the procedural unit. Switch "show" to the procedural unit to export it.');
     return;
@@ -729,6 +763,24 @@ function vehicleControllers(v: VehicleParams, folder: GUI): Controller[] {
   return controllers;
 }
 
+function buildingControllers(p: BuildingParams, folder: GUI): Controller[] {
+  const controllers = [
+    folder.add(p, 'size', 0.7, 1.3, 0.01),
+    folder.add(p, 'blocks', 1, 5, 1),
+    folder.add(p, 'floors', 1, 4, 1).name('storeys'),
+    folder.add(p, 'roof', ROOFS),
+    folder.add(p, 'windows', 0, 1, 0.05),
+    folder.add(p, 'chimneys'),
+    folder.add(p, 'banner'),
+    folder.add(p, 'walls', WALL_RAMPS),
+    folder.add(p, 'trim', TRIM_RAMPS),
+    folder.add(p, 'roofColor', ROOF_RAMPS).name('roof color'),
+    folder.add(p, 'light', LIGHT_RAMPS).name('light color'),
+  ];
+  controllers.forEach((c) => c.onFinishChange(rebuild));
+  return controllers;
+}
+
 /** The preset among `presets` that `params` were made from, if they haven't been changed since. */
 function presetOf(params: object, presets: Record<string, object>): string | undefined {
   const { seed: _, ...p } = params as { seed: number };
@@ -777,19 +829,26 @@ function rebindUnit(): void {
   unitFolders.forEach((f) => f.destroy());
   unitFolders = [];
   shownKind = state.kind;
-  // rebinding destroys the very controller whose callback triggered it, so leave that first
-  const preset = unitFolder.add(state, 'preset', presetNames(state.kind)).onChange((name: string) => {
-    applyPreset(name);
-    setTimeout(rebindUnit);
-    rebuild();
-  });
+  // rebinding destroys the very controller whose callback triggered it, so leave that first;
+  // buildings have no presets, only seeds
+  const preset =
+    state.kind === 'building'
+      ? []
+      : [
+          unitFolder.add(state, 'preset', presetNames(state.kind)).onChange((name: string) => {
+            applyPreset(name);
+            setTimeout(rebindUnit);
+            rebuild();
+          }),
+        ];
   const team = addTeamController(unitFolder);
   let params: Controller[] = [];
   if (state.kind === 'beast') params = beastControllers(state.beast, unitFolder);
   else if (state.kind === 'mounted') unitFolders = mountedFolders(state.mounted);
   else if (state.kind === 'vehicle') params = vehicleControllers(state.vehicle, unitFolder);
+  else if (state.kind === 'building') params = buildingControllers(state.building, unitFolder);
   else params = humanoidControllers(state.unit, unitFolder);
-  unitControllers = [preset, team, ...params];
+  unitControllers = [...preset, team, ...params];
   refreshGui();
 }
 rebindUnit();
@@ -993,6 +1052,7 @@ function restoreSettings(text: string): void {
   state.beast = saved.beast;
   state.mounted = saved.mounted;
   state.vehicle = saved.vehicle;
+  state.building = saved.building;
   const shared = sharedSettings();
   mergeSettings(shared, saved, SHARE_CHOICES);
   Object.assign(state, shared);

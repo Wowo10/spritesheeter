@@ -315,6 +315,8 @@ const ROW_PATTERNS: Record<AnimationName, RegExp[]> = {
   work: [/work|gather|harvest|mining|\bmine\b|dig|build|hammer/i],
   carry: [/carry/i],
   taunt: [/taunt|challenge|provok/i, /cheer|victory|celebrat|shout|roar|flex/i],
+  // a building going up; work has already taken any "build" clip a worker swings a hammer in
+  build: [/construct|build|scaffold/i],
 };
 
 /** Picks a clip for each sheet row by name; rows with no likely clip get null. */

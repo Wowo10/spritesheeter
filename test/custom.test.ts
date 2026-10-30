@@ -137,7 +137,15 @@ describe('guessing', () => {
       work: null,
       carry: null,
       taunt: null,
+      build: null,
     });
+  });
+
+  it("puts a building's construction on the build row, and a worker's building on work", () => {
+    expect(guessRows(['Idle', 'Construction']).build).toBe('Construction');
+    const rows = guessRows(['Build', 'Construct']);
+    expect(rows.work).toBe('Build');
+    expect(rows.build).toBe('Construct');
   });
 
   it('fills walk before run, and finds labour and carrying clips', () => {

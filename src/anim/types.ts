@@ -139,3 +139,26 @@ export interface VehiclePose {
   /** 0-1: broken down, wheels off one side, the frame tipped onto the ground, the weapon slack. */
   wreck?: number;
 }
+
+/**
+ * A building's pose. It never moves; what changes is how far it's built, which windows are
+ * lit, the chimney smoke, the flag, the front door, and how far it has fallen down.
+ */
+export interface BuildingPose {
+  /** 0-1: under construction, from bare foundations to finished; finished when absent. */
+  build?: number;
+  /** 0-1: share of the windows lit. */
+  lights: number;
+  /** Picks which windows near the `lights` threshold blink on or off; a new pick per eighth of a cycle. */
+  flicker: number;
+  /** How far, in cycles, the puffs have risen, and how thick the smoke is (0 none). */
+  smoke: { phase: number; amount: number };
+  /** Swing of the flag, in degrees. */
+  flag?: number;
+  /** 0 shut, 1 wide open. */
+  door?: number;
+  /** Sideways jolt of the whole building, in world units. */
+  shake?: [x: number, z: number];
+  /** 0-1: the blocks crumble, lean and drop into rubble. */
+  collapse?: number;
+}

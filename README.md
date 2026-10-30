@@ -28,7 +28,7 @@ Drag the divider to resize the panels. Double-click it to reset.
 
 ### Unit
 
-Pick a **type**: `humanoid`, `beast` (four-legged animals, see [Beasts](#beasts)), `mounted` (a humanoid riding a beast, see [Mounted units](#mounted-units)) or `vehicle` (siege engines, see [Vehicles](#vehicles)).
+Pick a **type**: `humanoid`, `beast` (four-legged animals, see [Beasts](#beasts)), `mounted` (a humanoid riding a beast, see [Mounted units](#mounted-units)), `vehicle` (siege engines, see [Vehicles](#vehicles)) or `building` (houses, towers and halls, see [Buildings](#buildings)).
 
 Pick a **preset** (swordsman, axeman, spearman, archer, crossbowman, knight, champion, crusher, skirmisher, bomber, buccaneer, musketeer, berserker, duelist, shieldbearer, worker, militia, mage, warlock, priest, shaman, guard, brute, pirate, monk, ghost, zombie) or **🎲 randomize**. Typing a **seed** gives a repeatable random unit. You can then tweak:
 
@@ -117,6 +117,35 @@ The wheels have four spokes, so a quarter turn per loop repeats seamlessly. To k
 
 The stone and javelin a catapult or ballista shoots are on the [effects sheet](#effects). Vehicles are long, so switching to `vehicle` raises the **frameSize** to 64 px.
 
+### Buildings
+
+With **type** set to `building`, the unit is a house, hall or keep. Buildings have **no presets**: every one is put together from random blocks, laid out by its **seed**. 🎲 **randomize** or a new seed gives a new building; the same seed always gives the same one.
+
+A main block goes down first, its front door facing the camera in the `S` column. More blocks are built flush against it and against each other: lower annexes along the walls, and narrow towers a storey taller at the corners. They never overlap, and the whole footprint stays small enough for a 128 px frame at the default **pixels / unit**. Each block gets a roof: a `gable` (two slopes and a ridge), a `hip` (sloping on all four sides, steep on towers) or `flat` (behind a crenellated parapet). You can then steer it:
+
+- **size:** overall scale
+- **blocks:** how many blocks it tries to fit (1–5). Raising it adds blocks without moving the ones already there.
+- **storeys:** of the main block (1–4); annexes are as tall or lower, towers taller
+- **roof:** `mixed` lets each block pick, or make them all `gable`, `hip` or `flat`
+- **windows:** how many of the places a window could go get one. None go where another block covers the wall.
+- **chimneys:** the main block always gets one on a sloped roof, other blocks now and then
+- **banner:** a team-coloured flag on the tallest roof
+- **Colours:** walls, trim (plinth, corner posts, beams, window frames, chimneys), roof and light (what glows in the windows)
+
+Colours, storeys and roof styles never move the blocks, so you can tweak a layout you like.
+
+Buildings fill only some of the rows:
+
+| Row | Building |
+|-----|----------|
+| `idle` | most windows lit, a few blinking on and off between frames; chimney smoke curling up, the flag stirring |
+| `build` | goes up from bare foundations: scaffolding, the walls rising inside it, then the roofs, the main block first. Plays once; the last frame is finished with the scaffolding gone. A game can also pick the frame by how far along the building is |
+| `work` | busy: every light on, smoke billowing out twice as fast, the front door open with light inside, the flag brisk |
+| `hit` | a jolt, the lights knocked out for a moment, then back as it was |
+| `death` | the lights go out, and the blocks crumble and lean over one after another, their roofs caving in, leaving rubble and wall stumps |
+
+The other rows aren't in a building's sheet. Switching to `building` raises the **frameSize** to 128 px. The 🎮 playground is only for units that move and fight, so it doesn't open for buildings.
+
 ### Custom model
 
 Load a **.glb / .gltf / .fbx / .obj** with **📂 load**, or drag it onto the page. For a `.gltf`, pick or drop its `.bin` and textures along with it.
@@ -130,7 +159,7 @@ Use **show** to switch between the procedural unit and the loaded model.
 
 ### Animation
 
-Pick which animation to **preview**, and set the frame count (1–12) for each one: `idle`, `walk`, `attack`, `cast`, `death`, `channel`, `hit`, `run`, `work`, `carry`, `taunt`.
+Pick which animation to **preview**, and set the frame count (1–12) for each one: `idle`, `walk`, `attack`, `cast`, `death`, `channel`, `hit`, `run`, `work`, `carry`, `taunt` and `build`. A row the unit doesn't have (`build` for anything but a building) is left out of its sheet.
 
 - `channel`: a looping, sustained spell pose.
 - `hit`: a quick flinch when the unit takes damage, ending back in its stance.
@@ -138,6 +167,7 @@ Pick which animation to **preview**, and set the frame count (1–12) for each o
 - `work`: the tool or weapon hand swings its item overhead and down into the ground, with an empty other hand gripping it too. It reads as mining, chopping, digging or building.
 - `carry`: walks with a sack over the shoulder of the empty hand (the left if both or neither are empty).
 - `taunt`: plays once. Raises the weapon overhead and shakes it twice, shouting, while an empty free hand beckons.
+- `build`: a building under construction; see [Buildings](#buildings). A custom model's clip named like `construct` goes here.
 
 ### Sprite
 
@@ -197,7 +227,7 @@ A custom model isn't included in the link, because its file can't travel in a UR
 
 ## Exporting
 
-The **Export** folder has a checkbox for each animation. Only the checked ones go into the exported sheet, packed top to bottom without gaps. By default that's `idle`, `walk`, `attack` and `death`. Check `cast` and `channel` for spellcasters, and `work` and `carry` for workers. The previews always show every animation. The checkboxes are saved in share links too.
+The **Export** folder has a checkbox for each animation. Only the checked ones go into the exported sheet, packed top to bottom without gaps. By default that's `idle`, `walk`, `attack`, `death` and `build`. Check `cast` and `channel` for spellcasters, `work` and `carry` for workers, and `work` and `hit` for buildings. The previews always show every animation. The checkboxes are saved in share links too.
 
 - **💾 export PNG + JSON:** writes `<name>-<team>.png` in the selected **team color**, plus `<name>.json`. The PNG is indexed: its palette is the JSON's `palette`, so a game can recolour a team by swapping 4 palette entries.
 - **team mask:** also writes `<name>-team-mask.png`: the team-coloured pixels alone, grey per shade, for recolouring in a shader. It's saved in share links.
@@ -214,7 +244,7 @@ In short, columns are the directions `N, NE, E, SE, S`, and the west-facing ones
 ```
 src/
   main.ts              app wiring, GUI, export actions
-  unit/                procedural humanoid, beast, mounted unit and vehicle: parameters, presets, body parts
+  unit/                procedural humanoid, beast, mounted unit, vehicle and building: parameters, presets, body parts
   anim/                humanoid, beast, mounted and vehicle poses, animation definitions
   custom/              loading and posing imported models
   effects/             projectiles and hit effects for the effects sheet

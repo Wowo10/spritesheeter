@@ -76,7 +76,8 @@ interface Row {
   lean?: number;
 }
 
-const ROWS: Record<AnimationName, Row> = {
+/** Every row but the building's. */
+const ROWS: Record<Exclude<AnimationName, 'build'>, Row> = {
   idle: { mount: 'idle', rider: 'idle' },
   walk: { mount: 'walk', rider: 'idle', cape: 'walk' },
   attack: { mount: 'walk', rider: 'attack' },
@@ -130,7 +131,7 @@ function death(t: number, rider: UnitParams, m: BeastParams, riderPose: Pose, mo
 export function mountedAnimations(counts: FrameCounts = DEFAULT_FRAME_COUNTS): MountedAnimationDef[] {
   const humanoid = Object.fromEntries(humanoidAnimations(counts).map((a) => [a.name, a])) as Record<AnimationName, AnimationDef>;
   const beast = Object.fromEntries(beastAnimations(counts).map((a) => [a.name, a.pose])) as Record<AnimationName, PoseFn<BeastParams, BeastPose>>;
-  return (Object.keys(ROWS) as AnimationName[]).map((name) => {
+  return (Object.keys(ROWS) as (keyof typeof ROWS)[]).map((name) => {
     const row = ROWS[name];
     const { frames, fps, loop } = humanoid[name];
     const pose = (t: number, p: MountedParams): MountedPose => {

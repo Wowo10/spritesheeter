@@ -9,7 +9,7 @@ import type { PlaygroundOptions, Projectile } from './playground/playground';
 import { applyDecay } from './render/decay';
 import type { MaterialLibrary } from './render/materials';
 import type { RampName } from './render/palette';
-import type { PortraitHead } from './render/portrait';
+import { BEAST_PORTRAIT_TURN, type PortraitHead } from './render/portrait';
 import { applyBeastPose, beastDecay, buildBeast, disposeBeast } from './unit/beast';
 import { BEAST_PRESETS, randomBeast, type BeastParams } from './unit/beast-params';
 import { applyBuildingPose, buildBuilding, buildingDecay, disposeBuilding } from './unit/building';
@@ -44,6 +44,8 @@ export interface Subject {
   readonly portraitHead: PortraitHead | null;
   /** Kept out of the portrait: a rider's mount, whose neck would cover the face. */
   readonly portraitHide: Object3D[];
+  /** Degrees added to the portrait's turn: a beast's long face shows best near profile, not nose-on. */
+  readonly portraitTurn: number;
   /** How it moves and fights in the playground; null if it doesn't (buildings). */
   playground(): PlaygroundUnit | null;
   /** Takes it out of the scene, and frees what it alone uses. */
@@ -124,6 +126,7 @@ const humanoid: KindDef<UnitParams> = {
       },
       portraitHead: { joint: u.joints.head, ...u.skull },
       portraitHide: [],
+      portraitTurn: 0,
       playground: () => ({ stride: legs(u.hipHeight), attack: projectileOf(p), cast: 'bolt', channel: true }),
       dispose: () => disposeHumanoid(u),
     };
@@ -154,6 +157,7 @@ const beast: KindDef<BeastParams> = {
       },
       portraitHead: { joint: b.joints.head, ...b.skull },
       portraitHide: [],
+      portraitTurn: BEAST_PORTRAIT_TURN,
       playground: () => ({ stride: legs(b.hipHeight), attack: null, cast: p.breath ? 'fireball' : null, channel: p.breath }),
       dispose: () => disposeBeast(b),
     };
@@ -188,6 +192,7 @@ const mounted: KindDef<MountedParams> = {
       },
       portraitHead: { joint: m.rider.joints.head, ...m.rider.skull },
       portraitHide: [m.beast.root],
+      portraitTurn: 0,
       playground: () => ({ stride: legs(m.beast.hipHeight), attack: projectileOf(p.rider), cast: 'bolt', channel: true }),
       dispose: () => disposeMounted(m),
     };
@@ -215,6 +220,7 @@ const vehicle: KindDef<VehicleParams> = {
       },
       portraitHead: null,
       portraitHide: [],
+      portraitTurn: 0,
       playground() {
         // the wheels turn a quarter turn a loop walking, half a turn running
         const r = v.dims.wheelR;
@@ -252,6 +258,7 @@ const building: KindDef<BuildingParams> = {
       },
       portraitHead: null,
       portraitHide: [],
+      portraitTurn: 0,
       playground: () => null,
       dispose: () => disposeBuilding(bld),
     };
@@ -285,6 +292,7 @@ export function customSubject(m: CustomModel, mats: MaterialLibrary, clipFor: (r
     },
     portraitHead: null,
     portraitHide: [],
+    portraitTurn: 0,
     playground: () => ({ stride: legs(height() / 2), attack: null, cast: 'bolt', channel: true }),
     dispose: () => m.root.removeFromParent(),
   };

@@ -9,7 +9,10 @@ export interface PortraitSettings {
   size: number;
   /** Above 1 crops in closer, below 1 shows more of the body. */
   zoom: number;
-  /** Unit yaw in degrees; 0 faces the camera, negative turns it to the viewer's left, its weapon hand away. */
+  /**
+   * Unit yaw in degrees; 0 faces the camera, negative turns it to the viewer's left, its weapon
+   * hand away. Added to the subject's own angle (a beast is turned further, toward profile).
+   */
   turn: number;
   /** Camera angle above the ground, in degrees; kept low so the face shows. */
   elevation: number;
@@ -29,6 +32,9 @@ export const DEFAULT_PORTRAIT: PortraitSettings = {
   background: 'dark',
   border: true,
 };
+
+/** Added to a beast's turn: its long face, nose-on at a humanoid's angle, shows best near profile. */
+export const BEAST_PORTRAIT_TURN = -35;
 
 /** A head to close in on: its joint, and where and how big the skull is in the joint's space. */
 export interface PortraitHead {

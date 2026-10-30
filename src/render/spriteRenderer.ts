@@ -127,21 +127,22 @@ export class SpriteRenderer {
 
   /**
    * Renders a close-up of `head` (or all of `root` without one): the portrait's square frame,
-   * turned and seen from its own camera, `count` frames as `setFrame` poses them. The camera is
+   * turned (the portrait's turn plus `turn`, the subject's own) and seen from its own camera,
+   * `count` frames as `setFrame` poses them. The camera is
    * placed from the first frame and stays put, so a looping portrait doesn't jitter. `hide` is
    * kept out of the picture (a rider's mount, whose neck would cover the face). Left to be
    * shaded, like renderFrames.
    */
   renderPortrait(
     root: Object3D,
-    opts: { count: number; setFrame: (i: number) => number | void; head: PortraitHead | null; hide?: Object3D[]; portrait: PortraitSettings; sprite: SpriteSettings },
+    opts: { count: number; setFrame: (i: number) => number | void; head: PortraitHead | null; hide?: Object3D[]; turn?: number; portrait: PortraitSettings; sprite: SpriteSettings },
   ): FrameSamples[] {
     const { portrait: p, sprite } = opts;
     const s = { ...sprite, frameSize: p.size };
     const ss = this.supersampleFor(s);
     const frames: FrameSamples[] = [];
     this.isolate(root, opts.hide ?? [], p.size * ss, () => {
-      root.rotation.y = (p.turn * Math.PI) / 180;
+      root.rotation.y = ((p.turn + (opts.turn ?? 0)) * Math.PI) / 180;
       const firstOpacity = opts.setFrame(0) ?? 1;
       const { center, span } = portraitFocus(root, opts.head, p.zoom);
       const cam = this.camera;

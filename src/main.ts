@@ -355,6 +355,9 @@ function shade(): void {
 
 // --- portrait: a head-and-shoulders close-up ------------------------------------
 
+/** Portraits are always in this team's colours, whichever team the sheet is in. */
+const PORTRAIT_TEAM: TeamColor = 'black';
+
 /** The portrait as rendered, and shaded with its background and border. */
 let portraitSampled: FrameSamples[] = [];
 let portraitFrames: IndexedFrame[] = [];
@@ -374,6 +377,7 @@ function renderPortrait(): void {
     setFrame: (i) => row.apply(frameTime({ frames: p.frames, loop: true }, i)),
     head: subject.portraitHead,
     hide: subject.portraitHide,
+    turn: subject.portraitTurn,
     portrait: p,
     sprite: state.sprite,
   });
@@ -389,7 +393,7 @@ function shadePortrait(): void {
 }
 
 function showPortrait(): void {
-  portraitPreview.setFrames(portraitFrames, teamPalette(state.team));
+  portraitPreview.setFrames(portraitFrames, teamPalette(PORTRAIT_TEAM));
 }
 
 // --- effects sheet: projectiles and hit effects ---------------------------------
@@ -448,7 +452,6 @@ function applyTeam(): void {
   mats.setRampColors('team', teamRgb(state.team));
   if (sheet) sheetToCanvas(sheet, teamPalette(state.team), sheetCanvas);
   if (effectsSheet) sheetToCanvas(effectsSheet, teamPalette(state.team), effectsCanvas);
-  showPortrait();
   showPreviewAnim();
   fitPreviews();
 }
@@ -639,7 +642,7 @@ async function exportEffects(): Promise<void> {
   if (s) downloadImage(s, `${exportName()}-effects`, state.team, state.teamMask, s.meta, { magic: magicColor() });
 }
 
-/** The portrait in the selected team colour: a still, or its loop as a strip, left to right. */
+/** The portrait in PORTRAIT_TEAM's colours: a still, or its loop as a strip, left to right. */
 async function exportPortrait(): Promise<void> {
   await renderSettled();
   if (portraitFrames.length === 0) return;
@@ -655,7 +658,7 @@ async function exportPortrait(): Promise<void> {
     palette: PALETTE,
     team: teamMeta(),
   };
-  downloadImage(packStrip(portraitFrames), `${exportName()}-portrait`, state.team, state.teamMask, meta, exportSource());
+  downloadImage(packStrip(portraitFrames), `${exportName()}-portrait`, PORTRAIT_TEAM, state.teamMask, meta, exportSource());
 }
 
 const actions = {

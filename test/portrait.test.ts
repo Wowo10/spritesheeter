@@ -1,7 +1,7 @@
 import { Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MaterialLibrary } from '../src/render/materials';
-import { portraitFocus, visibleBounds, type PortraitHead } from '../src/render/portrait';
+import { BEAST_PORTRAIT_TURN, DEFAULT_PORTRAIT, portraitFocus, visibleBounds, type PortraitHead } from '../src/render/portrait';
 import { BEAST_PRESETS } from '../src/unit/beast-params';
 import { buildBeast, disposeBeast, type Beast } from '../src/unit/beast';
 import { buildHumanoid, disposeHumanoid, type Humanoid } from '../src/unit/humanoid';
@@ -69,6 +69,22 @@ describe('portraitFocus', () => {
     expect(portraitFocus(long.root, headOf(long), 1).center.z).toBeGreaterThan(portraitFocus(short.root, headOf(short), 1).center.z);
     disposeBeast(short);
     disposeBeast(long);
+  });
+
+  it("shows a beast's face lengthwise at its portrait angle, still inside the frame", () => {
+    const b = buildBeast({ ...BEAST_PRESETS.wolf, snoutLength: 2 }, mats);
+    // the camera looks along -Z, so a face's width on screen is its spread in X
+    const faceAt = (turn: number) => {
+      b.root.rotation.y = (turn * Math.PI) / 180;
+      const focus = portraitFocus(b.root, headOf(b), 1);
+      return { focus, face: visibleBounds(b.joints.head) };
+    };
+    const nose = faceAt(DEFAULT_PORTRAIT.turn);
+    const { focus, face } = faceAt(DEFAULT_PORTRAIT.turn + BEAST_PORTRAIT_TURN);
+    expect(face.max.x - face.min.x).toBeGreaterThan(nose.face.max.x - nose.face.min.x);
+    expect(face.min.x).toBeGreaterThan(focus.center.x - focus.span / 2);
+    expect(face.max.x).toBeLessThan(focus.center.x + focus.span / 2);
+    disposeBeast(b);
   });
 
   it("follows a mounted rider's head, up on the saddle", () => {

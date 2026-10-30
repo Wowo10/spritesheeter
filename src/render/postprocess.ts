@@ -21,27 +21,56 @@ export interface PostprocessSettings {
 }
 
 /**
- * Downscales the supersampled sprite pass into one indexed frame. The buffer is RGBA8 straight
- * from WebGL (bottom row first) of size (w*ss) x (h*ss): ramp id in red, light in green.
- * Each output pixel takes the ramp covering most of its block, and its shade from the
- * average light of just that ramp's samples, so colours never bleed between materials.
+ * A frame's supersampled render gathered per output pixel, before it's shaded: enough to shade
+ * it again with other outline, coverage or thresholds without rendering it again.
  */
-export function downscaleFrame(
-  buf: Uint8Array,
-  width: number,
-  height: number,
-  ss: number,
-  idStep: number,
-  settings: PostprocessSettings,
-): IndexedFrame {
+export interface FrameSamples {
+  width: number;
+  height: number;
+  /** Supersampling: each output pixel gathered an ss x ss block. */
+  ss: number;
+  /** The ramp covering most of each pixel's block, or NO_RAMP. */
+  ramp: Uint8Array;
+  /** How many samples of each block are covered at all. */
+  covered: Uint8Array;
+  /** How many samples of each block are in its ramp, and their light summed. */
+  count: Uint8Array;
+  light: Uint16Array;
+  /** Dithered to this opacity once shaded, the pattern shifted sideways by phase. */
+  opacity: number;
+  phase: number;
+}
+
+const NO_RAMP = 255;
+
+/** Supersampling up to which a block's sample counts fit their 8 bits. */
+export const MAX_SUPERSAMPLE = 15;
+
+/**
+ * Gathers the supersampled sprite pass per output pixel. The buffer is RGBA8 straight from
+ * WebGL (bottom row first) of size (w*ss) x (h*ss): ramp id in red, light in green. Each pixel
+ * keeps the ramp covering most of its block (the first one seen wins a tie) and the light of
+ * just that ramp's samples, so colours never bleed between materials.
+ */
+export function sampleFrame(buf: Uint8Array, width: number, height: number, ss: number, idStep: number, opacity = 1, phase = 0): FrameSamples {
+  if (ss > MAX_SUPERSAMPLE) throw new Error(`sampleFrame: supersample ${ss} is over ${MAX_SUPERSAMPLE}`);
   const srcW = width * ss;
-  const out = new Uint8Array(width * height);
+  const n = width * height;
+  const f: FrameSamples = {
+    width,
+    height,
+    ss,
+    ramp: new Uint8Array(n).fill(NO_RAMP),
+    covered: new Uint8Array(n),
+    count: new Uint8Array(n),
+    light: new Uint16Array(n),
+    opacity,
+    phase,
+  };
   // samples and summed light per ramp in the current block, and which ramps it has
-  const counts = new Uint16Array(RAMP_COUNT);
-  const lights = new Uint32Array(RAMP_COUNT);
+  const counts = new Uint8Array(RAMP_COUNT);
+  const lights = new Uint16Array(RAMP_COUNT);
   const seen = new Uint8Array(RAMP_COUNT);
-  const minCovered = Math.max(1, Math.round(ss * ss * settings.coverage));
-  const [t0, t1, t2] = settings.thresholds;
 
   for (let oy = 0; oy < height; oy++) {
     // WebGL rows start at the bottom
@@ -60,29 +89,49 @@ export function downscaleFrame(
           lights[ramp] += buf[i + 1];
         }
       }
-      // the ramp seen first wins a tie; the counters are cleared for the next block
-      let best = -1;
-      let bestN = 0;
-      let bestLight = 0;
+      if (seenCount === 0) continue;
+      const o = oy * width + ox;
+      f.covered[o] = covered;
+      // the counters are cleared for the next block as they're read
       for (let k = 0; k < seenCount; k++) {
         const ramp = seen[k];
-        if (counts[ramp] > bestN) {
-          best = ramp;
-          bestN = counts[ramp];
-          bestLight = lights[ramp];
+        if (counts[ramp] > f.count[o]) {
+          f.ramp[o] = ramp;
+          f.count[o] = counts[ramp];
+          f.light[o] = lights[ramp];
         }
         counts[ramp] = 0;
         lights[ramp] = 0;
       }
-      if (covered < minCovered) continue;
-      const light = bestLight / bestN / 255;
-      const shade = light < t0 ? 0 : light < t1 ? 1 : light < t2 ? 2 : 3;
-      out[oy * width + ox] = paletteIndex(best, shade);
     }
   }
+  return f;
+}
 
-  const frame = { width, height, data: out };
-  return settings.outline === 'none' ? frame : outline(frame, settings.outline);
+/**
+ * Shades gathered samples into an indexed frame: a pixel is opaque if enough of its block is
+ * covered, and its shade comes from its ramp's average light. Then outlined, then dithered
+ * see-through (after the outline, so the edge isn't drawn around every hole); `glow` ramps
+ * fade slower, see dither.
+ */
+export function shadeFrame(f: FrameSamples, settings: PostprocessSettings, glow: readonly number[] = []): IndexedFrame {
+  const out = new Uint8Array(f.width * f.height);
+  const minCovered = Math.max(1, Math.round(f.ss * f.ss * settings.coverage));
+  const [t0, t1, t2] = settings.thresholds;
+  for (let i = 0; i < out.length; i++) {
+    if (f.ramp[i] === NO_RAMP || f.covered[i] < minCovered) continue;
+    const light = f.light[i] / f.count[i] / 255;
+    const shade = light < t0 ? 0 : light < t1 ? 1 : light < t2 ? 2 : 3;
+    out[i] = paletteIndex(f.ramp[i], shade);
+  }
+  const frame = { width: f.width, height: f.height, data: out };
+  const outlined = settings.outline === 'none' ? frame : outline(frame, settings.outline);
+  return dither(outlined, f.opacity, f.phase, glow);
+}
+
+/** Downscales the supersampled sprite pass (see sampleFrame) straight into an opaque indexed frame. */
+export function downscaleFrame(buf: Uint8Array, width: number, height: number, ss: number, idStep: number, settings: PostprocessSettings): IndexedFrame {
+  return shadeFrame(sampleFrame(buf, width, height, ss, idStep), settings);
 }
 
 /** Whether pixel (x, y) is opaque; outside the frame counts as transparent. */

@@ -2,7 +2,7 @@ import { Color, type Object3D, OrthographicCamera, Scene, WebGLRenderer, WebGLRe
 import { DEFAULT_LIGHTING, ID_STEP, ShadeMode, type MaterialLibrary } from './materials';
 import { MAGIC_RAMPS, rampIndex } from './palette';
 import { portraitFocus, type PortraitHead, type PortraitSettings } from './portrait';
-import { dither, downscaleFrame, type IndexedFrame, type PostprocessSettings } from './postprocess';
+import { MAX_SUPERSAMPLE, sampleFrame, shadeFrame, type FrameSamples, type IndexedFrame, type PostprocessSettings } from './postprocess';
 
 /** Rendered directions; the west-facing ones are mirrored from their east twins. */
 export const DIRECTIONS = ['N', 'NE', 'E', 'SE', 'S'] as const;
@@ -44,6 +44,16 @@ const MAX_TARGET_SIZE = 2048;
 /** Glowing ramps stay more solid when a sprite is dithered see-through. */
 const GLOW_RAMPS = MAGIC_RAMPS.map(rampIndex);
 
+/** A rendered sprite frame shaded with the given outline, coverage and thresholds. */
+export function shadeSprite(f: FrameSamples, s: PostprocessSettings): IndexedFrame {
+  return shadeFrame(f, s, GLOW_RAMPS);
+}
+
+/** Every direction's rendered frames, shaded. */
+export function shadeSprites(byDir: Map<Direction, FrameSamples[]>, s: PostprocessSettings): Map<Direction, IndexedFrame[]> {
+  return new Map([...byDir].map(([dir, frames]) => [dir, frames.map((f) => shadeSprite(f, s))]));
+}
+
 export class SpriteRenderer {
   private readonly camera = new OrthographicCamera();
   private target: WebGLRenderTarget | null = null;
@@ -79,18 +89,19 @@ export class SpriteRenderer {
   supersampleFor(s: Pick<SpriteSettings, 'frameSize' | 'supersample'>): number {
     const gl = this.renderer.getContext();
     const max = Math.min(MAX_TARGET_SIZE, this.renderer.capabilities.maxTextureSize, gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number);
-    return Math.max(1, Math.min(s.supersample, Math.floor(max / s.frameSize)));
+    return Math.max(1, Math.min(s.supersample, MAX_SUPERSAMPLE, Math.floor(max / s.frameSize)));
   }
 
   /**
    * Renders `count` frames in every direction, so the render target is set up once per batch.
    * `setFrame(i)` puts the subject in its i-th frame and may return its opacity (default 1);
-   * `root` is turned to face each direction.
+   * `root` is turned to face each direction. The frames are left to be shaded (shadeSprites),
+   * so they can be shaded again with other settings without rendering them again.
    */
-  renderFrames(root: Object3D, count: number, setFrame: (i: number) => number | void, s: SpriteSettings): Map<Direction, IndexedFrame[]> {
+  renderFrames(root: Object3D, count: number, setFrame: (i: number) => number | void, s: SpriteSettings): Map<Direction, FrameSamples[]> {
     const ss = this.supersampleFor(s);
     this.configureCamera(this.camera, s);
-    const result = new Map<Direction, IndexedFrame[]>();
+    const result = new Map<Direction, FrameSamples[]>();
     this.isolate(root, [], s.frameSize * ss, () => {
       for (const dir of DIRECTIONS) {
         root.rotation.y = (DIRECTION_YAW[dir] * Math.PI) / 180;
@@ -104,16 +115,17 @@ export class SpriteRenderer {
    * Renders a close-up of `head` (or all of `root` without one): the portrait's square frame,
    * turned and seen from its own camera, `count` frames as `setFrame` poses them. The camera is
    * placed from the first frame and stays put, so a looping portrait doesn't jitter. `hide` is
-   * kept out of the picture (a rider's mount, whose neck would cover the face).
+   * kept out of the picture (a rider's mount, whose neck would cover the face). Left to be
+   * shaded, like renderFrames.
    */
   renderPortrait(
     root: Object3D,
     opts: { count: number; setFrame: (i: number) => number | void; head: PortraitHead | null; hide?: Object3D[]; portrait: PortraitSettings; sprite: SpriteSettings },
-  ): IndexedFrame[] {
+  ): FrameSamples[] {
     const { portrait: p, sprite } = opts;
     const s = { ...sprite, frameSize: p.size };
     const ss = this.supersampleFor(s);
-    const frames: IndexedFrame[] = [];
+    const frames: FrameSamples[] = [];
     this.isolate(root, opts.hide ?? [], p.size * ss, () => {
       root.rotation.y = (p.turn * Math.PI) / 180;
       const firstOpacity = opts.setFrame(0) ?? 1;
@@ -135,14 +147,12 @@ export class SpriteRenderer {
     return frames;
   }
 
-  /** One frame of the subject as it's posed now: rendered, downscaled, dithered see-through. */
-  private frame(opacity: number, i: number, ss: number, s: SpriteSettings): IndexedFrame {
+  /** One frame of the subject as it's posed now, rendered and gathered per sprite pixel. */
+  private frame(opacity: number, i: number, ss: number, s: SpriteSettings): FrameSamples {
     const size = s.frameSize * ss;
     this.renderer.render(this.scene, this.camera);
     this.renderer.readRenderTargetPixels(this.target!, 0, 0, size, size, this.buf);
-    const frame = downscaleFrame(this.buf, s.frameSize, s.frameSize, ss, ID_STEP, s);
-    // dithered after the outline, so the edge isn't drawn around every hole
-    return dither(frame, opacity, i, GLOW_RAMPS);
+    return sampleFrame(this.buf, s.frameSize, s.frameSize, ss, ID_STEP, opacity, i);
   }
 
   /**

@@ -13,8 +13,8 @@ import { clearDecay } from './render/decay';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
 import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, PALETTE, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
 import { DEFAULT_PORTRAIT, PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES, type PortraitSettings } from './render/portrait';
-import { framePortrait, type IndexedFrame, type Outline } from './render/postprocess';
-import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings } from './render/spriteRenderer';
+import { framePortrait, type FrameSamples, type IndexedFrame, type Outline } from './render/postprocess';
+import { anchorOf, DEFAULT_SPRITE_SETTINGS, shadeSprite, shadeSprites, SpriteRenderer, type Direction, type SpriteSettings } from './render/spriteRenderer';
 import { UndoHistory } from './history';
 import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
 import { customSubject, kindDef, KINDS, type AnyParams, type Kind, type Playable, type Subject } from './subjects';
@@ -179,11 +179,16 @@ const effectsCanvas = document.getElementById('effects') as HTMLCanvasElement;
 const portraitPreview = new StripPreview(document.getElementById('portrait') as HTMLCanvasElement);
 const side = document.getElementById('side')!;
 
+/** A row as rendered, before it's shaded. */
+type SampledAnimation = Omit<AnimationFrames, 'frames'> & { frames: Map<Direction, FrameSamples[]> };
+
 /** What the sheet is rendered from: the procedural unit, or the loaded model. */
 let subject: Subject | null = null;
 /** The loaded model, kept while the procedural unit is shown. */
 let custom: CustomModel | null = null;
 let playables: Playable[] = [];
+/** The rows as rendered, before they're shaded into `rendered` with the outline, coverage and thresholds. */
+let sampled: SampledAnimation[] = [];
 let rendered: AnimationFrames[] = [];
 let sheet: Sheet | null = null;
 
@@ -232,6 +237,7 @@ function decayRow(death: Playable, rot: (t: number) => void): Playable {
   };
 }
 
+/** Renders the sheet, effects and portrait again, then shades and shows them. */
 function regenerate(): void {
   if (!subject) return;
   const { root } = subject;
@@ -240,38 +246,54 @@ function regenerate(): void {
   view.fitOrtho();
 
   playables = sheetRows(subject);
-  rendered = playables.map((a) => ({
+  sampled = playables.map((a) => ({
     name: a.name,
     fps: a.fps,
     loop: a.loop,
     hold: a.hold,
     frames: sprites.renderFrames(root, a.frames, (i) => a.apply(frameTime(a, i)), state.sprite),
   }));
+  renderEffects();
+  renderPortrait();
+  shade();
+}
+
+/**
+ * Shades what was rendered with the current outline, coverage and thresholds, and shows it:
+ * changing just those needs no rendering.
+ */
+function shade(): void {
+  // the 3D preview posterises by the thresholds too
+  mats.setLighting({ ...state.lighting, thresholds: state.sprite.thresholds });
+  if (sampled.length === 0) return;
+  rendered = sampled.map((a) => ({ ...a, frames: shadeSprites(a.frames, state.sprite) }));
   sheet = packSheet(rendered, anchorOf(state.sprite));
   const ss = sprites.supersampleFor(state.sprite);
   document.getElementById('sheetInfo')!.textContent =
     `${sheet.width}×${sheet.height} · ${sheet.meta.columns}×${sheet.meta.rows} frames of ${state.sprite.frameSize}px` +
     (ss < state.sprite.supersample ? ` · supersample ${ss} (max for this frame size)` : '');
-  renderEffects();
-  renderPortrait();
+  shadeEffects();
+  shadePortrait();
   applyTeam();
 }
 
 // --- portrait: a head-and-shoulders close-up ------------------------------------
 
+/** The portrait as rendered, and shaded with its background and border. */
+let portraitSampled: FrameSamples[] = [];
 let portraitFrames: IndexedFrame[] = [];
 /** Plays the portrait's loop in the time the idle row takes. */
 let portraitFps = 1;
 
 /**
  * Renders the portrait from the idle row (the first row if there's none): its first frame for
- * a still, or the whole loop over the portrait's frames, with its background and border.
+ * a still, or the whole loop over the portrait's frames. shadePortrait finishes it.
  */
 function renderPortrait(): void {
   const row = playables.find((a) => a.name === 'idle') ?? playables[0];
   if (!subject || !row) return;
   const p = state.portrait;
-  const frames = sprites.renderPortrait(subject.root, {
+  portraitSampled = sprites.renderPortrait(subject.root, {
     count: p.frames,
     setFrame: (i) => row.apply(frameTime({ frames: p.frames, loop: true }, i)),
     head: subject.portraitHead,
@@ -279,10 +301,15 @@ function renderPortrait(): void {
     portrait: p,
     sprite: state.sprite,
   });
-  portraitFrames = frames.map((f) => framePortrait(f, p.background, p.border));
   portraitFps = Math.round(((row.fps * p.frames) / row.frames) * 100) / 100;
   document.getElementById('portraitInfo')!.textContent =
     `${p.size}×${p.size}` + (p.frames > 1 ? ` · ${p.frames} frames at ${portraitFps} fps` : '');
+}
+
+/** Shades the rendered portrait, and puts in its background and border. */
+function shadePortrait(): void {
+  const p = state.portrait;
+  portraitFrames = portraitSampled.map((f) => framePortrait(shadeSprite(f, state.sprite), p.background, p.border));
 }
 
 function showPortrait(): void {
@@ -292,36 +319,47 @@ function showPortrait(): void {
 // --- effects sheet: projectiles and hit effects ---------------------------------
 
 let effects: Effects | null = null;
+let effectsSampled: SampledAnimation[] = [];
 let effectsSheet: Sheet | null = null;
 /** What the effects sheet was last rendered from; body edits don't change it, so they skip the work. */
 let effectsKey = '';
+/** Effects sit centred in their frames: the frame centre is the projectile's position. */
+const effectsSprite = () => ({ ...state.sprite, anchorY: 0.5 });
 
 /**
- * Renders the effects in the unit's magic colour, centred in their frames (the frame centre
- * is the projectile's position), at the unit's scale and with its sprite and lighting settings.
+ * Renders the effects in the unit's magic colour, at the unit's scale and with its sprite and
+ * lighting settings. shadeEffects finishes them.
  */
 function renderEffects(): void {
   const magic = magicColor();
-  const key = JSON.stringify({ magic, sprite: state.sprite, lighting: state.lighting });
+  // shading settings aside: shadeEffects applies those
+  const { outline: _, coverage: __, thresholds: ___, ...shape } = state.sprite;
+  const key = JSON.stringify({ magic, sprite: shape, lighting: state.lighting });
   if (key === effectsKey) return;
   effectsKey = key;
   if (effects) disposeEffects(effects);
   effects = buildEffects(mats, magic);
   view.scene.add(effects.root);
 
-  const s = { ...state.sprite, anchorY: 0.5 };
   const root = effects.root;
-  const anims = effects.defs.map((d) => ({
+  effectsSampled = effects.defs.map((d) => ({
     name: d.name,
     fps: d.fps,
     loop: d.loop,
-    frames: sprites.renderFrames(root, d.frames, (i) => d.apply(frameTime(d, i)), s),
+    frames: sprites.renderFrames(root, d.frames, (i) => d.apply(frameTime(d, i)), effectsSprite()),
   }));
   // kept in the scene only to be rendered
   root.visible = false;
-  effectsSheet = packSheet(anims, anchorOf(s));
+}
+
+function shadeEffects(): void {
+  const s = effectsSprite();
+  effectsSheet = packSheet(
+    effectsSampled.map((a) => ({ ...a, frames: shadeSprites(a.frames, s) })),
+    anchorOf(s),
+  );
   document.getElementById('effectsInfo')!.textContent =
-    `${effectsSheet.width}×${effectsSheet.height} · ${effectsSheet.meta.columns}×${effectsSheet.meta.rows} frames · ${magic}`;
+    `${effectsSheet.width}×${effectsSheet.height} · ${effectsSheet.meta.columns}×${effectsSheet.meta.rows} frames · ${magicColor()}`;
 }
 
 /** Team colour is a pure palette swap: recolour the previews without rendering anything again. */
@@ -353,15 +391,20 @@ function showPreviewAnim(): void {
   document.getElementById('animLabel')!.textContent = r ? state.previewAnim : `${state.previewAnim} — not in this sheet`;
 }
 
-let regenQueued = false;
-function queueRegenerate(): void {
-  if (regenQueued) return;
-  regenQueued = true;
-  requestAnimationFrame(() => {
-    regenQueued = false;
-    regenerate();
-  });
+/** What settings changed since the last frame call for: rendering it all again, or just shading it. */
+let queued: 'render' | 'shade' | null = null;
+function queue(what: 'render' | 'shade'): void {
+  if (queued === null) {
+    requestAnimationFrame(() => {
+      const run = queued === 'render' ? regenerate : shade;
+      queued = null;
+      run();
+    });
+  }
+  if (queued !== 'render') queued = what;
 }
+const queueRegenerate = () => queue('render');
+const queueShade = () => queue('shade');
 
 function exportName(): string {
   if (state.source === 'model' && custom) return custom.name.replace(/[^\w.-]+/g, '_');
@@ -844,13 +887,17 @@ spriteFolder.add(state.sprite, 'frameSize', FRAME_SIZES).onFinishChange(queueReg
 spriteFolder.add(state.sprite, 'pixelsPerUnit', 6, 80, 0.5).name('pixels / unit').onFinishChange(queueRegenerate);
 spriteFolder.add(state.sprite, 'elevation', 10, 70, 1).onFinishChange(queueRegenerate);
 spriteFolder.add(state.sprite, 'anchorY', 0.5, 0.95, 0.01).name('ground anchor').onFinishChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'outline', OUTLINES).onFinishChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'coverage', 0.1, 0.9, 0.05).name('min coverage').onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'outline', OUTLINES).onFinishChange(queueShade);
+spriteFolder.add(state.sprite, 'coverage', 0.1, 0.9, 0.05).name('min coverage').onFinishChange(queueShade);
 spriteFolder.add(state.sprite, 'supersample', SUPERSAMPLES).onFinishChange(queueRegenerate);
 
-/** Portrait controls only re-render the portrait, not the sheet. */
+/** Portrait controls only re-render the portrait, not the sheet; its background and border only re-shade it. */
 const updatePortrait = () => {
   renderPortrait();
+  reframePortrait();
+};
+const reframePortrait = () => {
+  shadePortrait();
   showPortrait();
 };
 const portraitFolder = restoreOpen(gui.addFolder('Portrait'), true);
@@ -859,8 +906,8 @@ portraitFolder.add(state.portrait, 'zoom', 0.5, 2, 0.05).onFinishChange(updatePo
 portraitFolder.add(state.portrait, 'turn', -90, 90, 1).name('turn (°)').onFinishChange(updatePortrait);
 portraitFolder.add(state.portrait, 'elevation', 0, 45, 1).onFinishChange(updatePortrait);
 portraitFolder.add(state.portrait, 'frames', 1, 12, 1).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'background', PORTRAIT_BACKGROUNDS).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'border').onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'background', PORTRAIT_BACKGROUNDS).onFinishChange(reframePortrait);
+portraitFolder.add(state.portrait, 'border').onFinishChange(reframePortrait);
 
 const lightFolder = restoreOpen(gui.addFolder('Lighting'), true);
 lightFolder.add(state.lighting, 'azimuth', -180, 180, 1).name('light from ← →').onFinishChange(queueRegenerate);
@@ -869,7 +916,7 @@ lightFolder.add(state.lighting, 'diffuse', 0, 1.5, 0.01).name('light strength').
 lightFolder.add(state.lighting, 'fill', 0, 0.8, 0.01).name('front fill').onFinishChange(queueRegenerate);
 lightFolder.add(state.lighting, 'ambient', 0, 1, 0.01).onFinishChange(queueRegenerate);
 state.sprite.thresholds.forEach((_, i) =>
-  lightFolder.add(state.sprite.thresholds, String(i) as '0', 0, 1, 0.01).name(`shade ${i}|${i + 1}`).onFinishChange(queueRegenerate),
+  lightFolder.add(state.sprite.thresholds, String(i) as '0', 0, 1, 0.01).name(`shade ${i}|${i + 1}`).onFinishChange(queueShade),
 );
 
 const viewFolder = restoreOpen(gui.addFolder('View'), true);

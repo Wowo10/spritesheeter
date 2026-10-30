@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OUTLINE_INDEX, paletteIndex, RAMP_NAMES, TEAM_INDICES } from '../src/render/palette';
-import { BEVEL_DARK, BEVEL_LIGHT, downscaleFrame, framePortrait, mirrorFrame, outline, PORTRAIT_FILL, type IndexedFrame, type PostprocessSettings } from '../src/render/postprocess';
+import { BEVEL_DARK, BEVEL_LIGHT, dither, downscaleFrame, framePortrait, mirrorFrame, outline, PORTRAIT_FILL, sampleFrame, shadeFrame, type IndexedFrame, type PostprocessSettings } from '../src/render/postprocess';
 import { mulberry32 } from '../src/rng';
 
 const STEP = 8;
@@ -118,6 +118,34 @@ describe('downscaleFrame', () => {
         }
       }
     }
+  });
+});
+
+describe('sampleFrame & shadeFrame', () => {
+  it('shades one render with any settings as if it were rendered again with them', () => {
+    const buf = randomPass(16, 8, 5);
+    const samples = sampleFrame(buf, 16, 16, 8, STEP);
+    const variants: PostprocessSettings[] = [
+      { coverage: 0.3, thresholds: [0.4, 0.62, 0.86], outline: 'inner' },
+      { coverage: 0.8, thresholds: [0.2, 0.5, 0.7], outline: 'outer' },
+      { coverage: 0.1, thresholds: [0.3, 0.55, 0.8], outline: 'none' },
+    ];
+    // twice over, so shading mustn't change the samples
+    for (const s of [...variants, ...variants]) {
+      expect(Array.from(shadeFrame(samples, s).data)).toEqual(Array.from(referenceDownscale(buf, 16, 16, 8, s).data));
+    }
+  });
+
+  it('dithers by the opacity and phase it was rendered with, after the outline', () => {
+    const buf = randomPass(16, 4, 9);
+    const s: PostprocessSettings = { coverage: 0.3, thresholds: [0.4, 0.62, 0.86], outline: 'outer' };
+    const glow = [3];
+    const shaded = shadeFrame(sampleFrame(buf, 16, 16, 4, STEP, 0.5, 3), s, glow);
+    expect(Array.from(shaded.data)).toEqual(Array.from(dither(referenceDownscale(buf, 16, 16, 4, s), 0.5, 3, glow).data));
+  });
+
+  it('refuses supersampling too fine for its counters', () => {
+    expect(() => sampleFrame(new Uint8Array(16 * 16 * 4), 1, 1, 16, STEP)).toThrow();
   });
 });
 

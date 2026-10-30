@@ -5,7 +5,7 @@ import type { RampName } from '../render/palette';
 import { PartBuilder } from '../unit/parts';
 
 // new effects go last: rows of sheets games already use must not shift
-export const EFFECT_NAMES = ['arrow', 'bolt', 'fireball', 'impact', 'puff', 'stone', 'javelin'] as const;
+export const EFFECT_NAMES = ['arrow', 'bolt', 'fireball', 'impact', 'puff', 'stone', 'javelin', 'bomb', 'throwingAxe', 'blast', 'bullet'] as const;
 export type EffectName = (typeof EFFECT_NAMES)[number];
 
 /** One row of the effects sheet. */
@@ -32,7 +32,9 @@ export const FADED = 0.25;
 /**
  * Projectiles and hit effects drawn with the palette materials, so they render like units.
  * Spells (bolt, fireball, impact) are in `magic`; the arrow's and javelin's fletching is
- * team-coloured. Stones and javelins are what catapults and ballistas shoot.
+ * team-coloured. Stones and javelins are what catapults and ballistas shoot; javelins, bombs
+ * and throwing axes are also thrown by hand, and bombs go off in a fiery blast. Muskets and
+ * pistols fire bullets.
  */
 export function buildEffects(mats: MaterialLibrary, magic: RampName): Effects {
   const b = new PartBuilder(mats);
@@ -56,6 +58,10 @@ export function buildEffects(mats: MaterialLibrary, magic: RampName): Effects {
   const puff = buildPuff(b, groups.puff);
   const stone = buildStone(b, groups.stone);
   const javelin = buildJavelin(b, groups.javelin);
+  const bomb = buildBomb(b, groups.bomb);
+  const throwingAxe = buildThrowingAxe(b, groups.throwingAxe);
+  const blast = buildBlast(b, groups.blast);
+  const bullet = buildBullet(b, groups.bullet);
 
   const def = (name: EffectName, frames: number, fps: number, loop: boolean, pose: (t: number) => number): EffectDef => ({
     name,
@@ -77,6 +83,10 @@ export function buildEffects(mats: MaterialLibrary, magic: RampName): Effects {
       def('puff', 5, 10, false, puff),
       def('stone', 4, 10, true, stone),
       def('javelin', 1, 1, true, javelin),
+      def('bomb', 4, 10, true, bomb),
+      def('throwingAxe', 4, 14, true, throwingAxe),
+      def('blast', 5, 12, false, blast),
+      def('bullet', 1, 1, true, bullet),
     ],
   };
 }
@@ -209,5 +219,63 @@ function buildJavelin(b: PartBuilder, g: Group): (t: number) => number {
   b.cone(g, 'steel', 0.15, 0.34, [0, 0, 0.77], [90, 0, 0]);
   b.box(g, 'team', [0.32, 0.05, 0.3], [0, 0, -0.55]);
   b.box(g, 'team', [0.05, 0.32, 0.3], [0, 0, -0.55]);
+  return () => 1;
+}
+
+/** A bomb tumbling through the air, its fuse sparking. */
+function buildBomb(b: PartBuilder, g: Group): (t: number) => number {
+  const tumble = new Group();
+  g.add(tumble);
+  b.mesh(tumble, new IcosahedronGeometry(0.26, 1), 'dark');
+  b.cylinder(tumble, 'steel', 0.09, 0.07, [0, 0.26, 0]);
+  const spark = b.box(tumble, 'fire', [0.14, 0.14, 0.14], [0, 0.36, 0], [45, 45, 0]);
+  return (t) => {
+    tumble.rotation.x = 360 * t * DEG;
+    spark.scale.setScalar(1 + 0.4 * Math.sin(t * Math.PI * 4));
+    return 1;
+  };
+}
+
+/** A hand axe spinning end over end, head first at the start of each turn. */
+function buildThrowingAxe(b: PartBuilder, g: Group): (t: number) => number {
+  const spin = new Group();
+  g.add(spin);
+  // the handle along Z, centred on its balance point near the head
+  b.box(spin, 'wood', [0.09, 0.09, 0.6], [0, 0, -0.1]);
+  b.box(spin, 'steel', [0.08, 0.26, 0.22], [0, 0.12, 0.18]);
+  b.box(spin, 'steel', [0.08, 0.08, 0.34], [0, 0.27, 0.18]); // flared edge
+  return (t) => {
+    spin.rotation.x = 360 * t * DEG;
+    return 1;
+  };
+}
+
+/** A bomb going off: a fireball flaring and shrinking, sparks flying, smoke rising, fading out. */
+function buildBlast(b: PartBuilder, g: Group): (t: number) => number {
+  const core = b.mesh(g, new IcosahedronGeometry(0.3, 0), 'fire');
+  const sparks = BURST.map(() => b.box(g, 'fire', [0.12, 0.12, 0.12], [0, 0, 0], [45, 45, 0]));
+  const smoke = [
+    [0.18, 0.1, 0.05],
+    [-0.16, 0.14, -0.06],
+    [0.02, 0.22, 0.14],
+  ].map((p) => b.mesh(g, new IcosahedronGeometry(1, 0), 'dark', p as [number, number, number]));
+  return (t) => {
+    core.scale.setScalar(keys(t, [[0, 0.7], [0.25, 1.5], [0.6, 0.8], [1, 0.1]]));
+    const reach = keys(t, [[0, 0.15], [0.5, 0.75], [1, 0.9]]);
+    sparks.forEach((s, i) => {
+      const [x, y, z] = BURST[i];
+      s.position.set(x * reach, y * reach, z * reach);
+      s.scale.setScalar(keys(t, [[0, 1], [1, 0.4]]));
+    });
+    smoke.forEach((c) => c.scale.setScalar(keys(t, [[0, 0.01], [0.3, 0.12], [1, 0.26]])));
+    smoke.forEach((c, i) => (c.position.y = [0.1, 0.14, 0.22][i] + 0.35 * t));
+    return keys(t, [[0, 1], [0.5, 1], [1, FADED]]);
+  };
+}
+
+/** A lead ball, far too small to see, so drawn as a ball with a pale streak of its flight behind it. */
+function buildBullet(b: PartBuilder, g: Group): (t: number) => number {
+  b.mesh(g, new IcosahedronGeometry(0.08, 0), 'dark', [0, 0, 0.2]);
+  b.box(g, 'bone', [0.05, 0.05, 0.4], [0, 0, -0.06]);
   return () => 1;
 }

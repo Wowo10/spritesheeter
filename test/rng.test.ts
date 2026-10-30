@@ -26,4 +26,34 @@ describe('rng', () => {
     }
     expect(archers).toBeGreaterThan(0);
   });
+
+  it('gives some archers a crossbow, the other hand free to steady it', () => {
+    let crossbows = 0;
+    for (let seed = 0; seed < 200; seed++) {
+      const u = randomUnit(seed);
+      if (u.rightHand === 'crossbow') {
+        crossbows++;
+        expect(u.leftHand).toBe('none');
+      }
+      expect(u.leftHand).not.toBe('crossbow');
+    }
+    expect(crossbows).toBeGreaterThan(0);
+  });
+
+  it('gives some units a two-handed weapon, the other hand empty', () => {
+    let heavy = 0;
+    for (let seed = 0; seed < 300; seed++) {
+      const u = randomUnit(seed);
+      if (['greatsword', 'maul', 'greataxe'].includes(u.rightHand)) {
+        heavy++;
+        expect(u.leftHand).toBe('none');
+      }
+    }
+    expect(heavy).toBeGreaterThan(0);
+  });
+
+  it('gives some units a throwing weapon', () => {
+    const thrown = Array.from({ length: 300 }, (_, seed) => randomUnit(seed)).filter((u) => ['javelin', 'bomb', 'throwingAxe'].includes(u.rightHand));
+    expect(thrown.length).toBeGreaterThan(0);
+  });
 });

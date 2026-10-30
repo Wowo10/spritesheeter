@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { humanoidAnimations } from '../src/anim/humanoid-anims';
-import type { JointName } from '../src/anim/types';
+import { frameTime, type JointName } from '../src/anim/types';
 import { MaterialLibrary } from '../src/render/materials';
 import { applyPose, buildHumanoid, disposeHumanoid } from '../src/unit/humanoid';
-import { GAITS, handItems, PRESETS, type HandItem, type UnitParams } from '../src/unit/params';
+import { Quaternion, Vector3 } from 'three';
+import { GAITS, handItems, PRESETS, SECOND_GRIP, type HandItem, type HeavyItem, type UnitParams } from '../src/unit/params';
 
 const attack = humanoidAnimations().find((a) => a.name === 'attack')!;
 const unit = (rightHand: HandItem, leftHand: HandItem): UnitParams => ({ ...PRESETS.swordsman, rightHand, leftHand });
@@ -44,9 +45,190 @@ describe('per-hand items', () => {
     expect(pitch(unit('none', 'bow'), 0.5, 'elbowR')).toBeGreaterThan(120);
   });
 
+  it('a crossbow leaves the other hand alone', () => {
+    expect(handItems(unit('crossbow', 'kiteShield'))).toEqual({ L: 'kiteShield', R: 'crossbow' });
+    expect(handItems(unit('sword', 'crossbow'))).toEqual({ L: 'crossbow', R: 'sword' });
+  });
+
+  it('a crossbow is aimed level, an empty other hand steadying it', () => {
+    const j = attack.pose(0.5, unit('crossbow', 'none'), 0.8).joints;
+    // shoulder + elbow + wrist = 180 (plus a little for the aim's yaw and roll): the stock is level
+    expect(j.shoulderR![0] + j.elbowR![0] + j.handR![0]).toBeCloseTo(184);
+    expect(j.shoulderL![0]).toBeGreaterThan(50);
+  });
+
+  it('a shield stays put while the crossbow shoots', () => {
+    const u = unit('crossbow', 'kiteShield');
+    expect(pitch(u, 0.5, 'shoulderL')).toBe(pitch(u, 0, 'shoulderL'));
+    expect(pitch(u, 0.5, 'shoulderR')).toBeGreaterThan(60);
+  });
+
+  it('a left-hand crossbow mirrors the turn', () => {
+    const yaw = (u: UnitParams) => attack.pose(0.5, u, 0.8).joints.spine![1];
+    expect(yaw(unit('crossbow', 'none'))).not.toBe(0);
+    expect(yaw(unit('none', 'crossbow'))).toBeCloseTo(-yaw(unit('crossbow', 'none')));
+  });
+
   it('a left-led attack mirrors the body twist', () => {
     const yaw = (u: UnitParams) => attack.pose(0.5, u, 0.8).joints.spine![1];
     expect(yaw(unit('none', 'sword'))).toBeCloseTo(-yaw(unit('sword', 'none')));
+  });
+});
+
+describe('two-handed weapons', () => {
+  const mats = new MaterialLibrary();
+
+  it('empty the other hand; with two, the left wins', () => {
+    expect(handItems(unit('greatsword', 'kiteShield'))).toEqual({ L: 'none', R: 'greatsword' });
+    expect(handItems(unit('sword', 'maul'))).toEqual({ L: 'maul', R: 'none' });
+    expect(handItems(unit('greataxe', 'bow'))).toEqual({ L: 'bow', R: 'none' });
+  });
+
+  // the other fist closes on the grip in every frame it should, whatever the lead arm does
+  const bodies: [string, UnitParams][] = [
+    ['champion', PRESETS.champion],
+    ['crusher', PRESETS.crusher],
+  ];
+  for (const [name, body] of bodies) {
+    for (const item of ['greatsword', 'maul', 'greataxe'] as HeavyItem[]) {
+      for (const lead of ['R', 'L'] as const) {
+        it(`${name}: both hands on the ${item}, ${lead} leading`, () => {
+          const u: UnitParams = { ...body, rightHand: lead === 'R' ? item : 'none', leftHand: lead === 'L' ? item : 'none' };
+          const other = lead === 'R' ? 'L' : 'R';
+          const h = buildHumanoid(u, mats);
+          for (const anim of humanoidAnimations()) {
+            if (anim.name === 'death' || anim.name === 'carry') continue;
+            for (let i = 0; i < anim.frames; i++) {
+              applyPose(h, anim.pose(frameTime(anim, i), u, h.hipHeight));
+              h.root.updateMatrixWorld(true);
+              const grip = h.joints[`hand${lead}`].localToWorld(new Vector3(0, SECOND_GRIP[item], 0));
+              const fist = h.joints[`hand${other}`].localToWorld(new Vector3());
+              expect(fist.distanceTo(grip), `${anim.name} frame ${i}`).toBeLessThan(0.01);
+              const turn = h.joints[`hand${lead}`].getWorldQuaternion(new Quaternion()).angleTo(h.joints[`hand${other}`].getWorldQuaternion(new Quaternion()));
+              expect(turn, `${anim.name} frame ${i}`).toBeLessThan(0.01);
+            }
+          }
+          disposeHumanoid(h);
+        });
+      }
+    }
+  }
+
+  it('a maul is heaved up overhead', () => {
+    // the grip may move the lead arm too, so look at where the fist ends up, not its angles
+    const u = unit('maul', 'none');
+    const h = buildHumanoid(u, mats);
+    applyPose(h, attack.pose(0.5, u, h.hipHeight));
+    h.root.updateMatrixWorld(true);
+    const fist = h.joints.handR.localToWorld(new Vector3());
+    expect(fist.y).toBeGreaterThan(h.joints.head.localToWorld(new Vector3()).y);
+    disposeHumanoid(h);
+  });
+
+  it('a greatsword sweeps across, the torso turning through it, mirrored for the left hand', () => {
+    const yaw = (u: UnitParams, t: number) => attack.pose(t, u, 0.8).joints.spine![1];
+    const right = unit('greatsword', 'none');
+    expect(Math.sign(yaw(right, 0.3))).toBe(-Math.sign(yaw(right, 0.75)));
+    expect(Math.abs(yaw(right, 0.75))).toBeGreaterThan(30);
+    expect(yaw(unit('none', 'greatsword'), 0.75)).toBeCloseTo(-yaw(right, 0.75));
+  });
+});
+
+describe('thrown weapons', () => {
+  it('leave the other hand alone', () => {
+    expect(handItems(unit('javelin', 'roundShield'))).toEqual({ L: 'roundShield', R: 'javelin' });
+  });
+
+  it('leave the hand after the release, and another is drawn by the end', () => {
+    for (const [r, l, hand] of [['javelin', 'none', 'R'], ['none', 'bomb', 'L'], ['throwingAxe', 'kiteShield', 'R']] as const) {
+      const thrown = (t: number) => attack.pose(t, unit(r, l), 0.8).thrown;
+      expect(thrown(0.75)).toBe(hand);
+      for (const t of [0, 0.25, 0.5, 1]) expect(thrown(t)).toBeUndefined();
+    }
+  });
+
+  it('hide the thrown item, and only that one', () => {
+    const u = buildHumanoid(unit('javelin', 'roundShield'), new MaterialLibrary());
+    applyPose(u, attack.pose(0.75, unit('javelin', 'roundShield'), u.hipHeight));
+    expect(u.grips.R.visible).toBe(false);
+    expect(u.grips.L.visible).toBe(true);
+    applyPose(u, attack.pose(1, unit('javelin', 'roundShield'), u.hipHeight));
+    expect(u.grips.R.visible).toBe(true);
+    disposeHumanoid(u);
+  });
+
+  it('cock a javelin back overhead, held level and point-first', () => {
+    const j = attack.pose(0.25, unit('javelin', 'none'), 0.8).joints;
+    expect(j.shoulderR![0]).toBeGreaterThan(140);
+    // 90 is level: the point tips up a little for distance
+    expect(j.shoulderR![0] + j.elbowR![0] + j.handR![0]).toBeCloseTo(100);
+  });
+
+  it('lob a bomb underarm, the empty hand pointing at the target', () => {
+    const u = unit('bomb', 'none');
+    expect(pitch(u, 0.3, 'shoulderR')).toBeLessThan(0);
+    expect(pitch(u, 0.6, 'shoulderR')).toBeGreaterThan(90);
+    expect(pitch(u, 0.25, 'shoulderL')).toBeGreaterThan(50);
+  });
+});
+
+describe('firearms', () => {
+  const total = (j: Record<string, number[] | undefined>, h: 'L' | 'R') => j[`shoulder${h}`]![0] + j[`elbow${h}`]![0] + j[`hand${h}`]![0];
+
+  it('a musket takes both hands, aimed level from the shoulder, the other hand steadying it', () => {
+    expect(handItems(unit('musket', 'kiteShield'))).toEqual({ L: 'none', R: 'musket' });
+    const j = attack.pose(0.5, unit('musket', 'kiteShield'), 0.8).joints;
+    expect(total(j, 'R')).toBeCloseTo(184);
+    expect(j.shoulderL![0]).toBeGreaterThan(50);
+  });
+
+  it('a pistol is held out level at arm\'s length, the empty hand behind the back', () => {
+    expect(handItems(unit('pistol', 'sabre'))).toEqual({ L: 'sabre', R: 'pistol' });
+    const j = attack.pose(0.5, unit('pistol', 'none'), 0.8).joints;
+    expect(j.shoulderR![0]).toBeGreaterThan(70);
+    expect(total(j, 'R')).toBeCloseTo(93);
+    expect(j.shoulderL![0]).toBeLessThan(0);
+    // a sabre stays put
+    const u = unit('pistol', 'sabre');
+    expect(pitch(u, 0.5, 'shoulderL')).toBe(pitch(u, 0, 'shoulderL'));
+  });
+
+  it('a left-hand pistol mirrors the turn', () => {
+    const yaw = (u: UnitParams) => attack.pose(0.5, u, 0.8).joints.spine![1];
+    expect(yaw(unit('pistol', 'none'))).not.toBe(0);
+    expect(yaw(unit('none', 'pistol'))).toBeCloseTo(-yaw(unit('pistol', 'none')));
+  });
+
+  it('flash on the shot, smoke after; a crossbow neither', () => {
+    for (const [r, l, hand] of [['pistol', 'none', 'R'], ['none', 'musket', 'L']] as const) {
+      const muzzle = (t: number) => attack.pose(t, unit(r, l), 0.8).muzzle?.[hand];
+      expect(muzzle(0.75)).toBe('flash');
+      expect(muzzle(1)).toBe('smoke');
+      expect(muzzle(0)).toBeUndefined();
+      expect(muzzle(0.5)).toBeUndefined();
+    }
+    expect(attack.pose(0.75, unit('crossbow', 'none'), 0.8).muzzle?.R).toBeUndefined();
+  });
+
+  it('a second pistol fires a beat later', () => {
+    const muzzle = attack.pose(0.57, unit('pistol', 'pistol'), 0.8).muzzle!;
+    expect(muzzle.R).toBe('flash');
+    expect(muzzle.L).toBeUndefined();
+  });
+
+  it('shows the flash and smoke on the model only when fired', () => {
+    const u = unit('pistol', 'none');
+    const h = buildHumanoid(u, new MaterialLibrary());
+    expect(h.muzzles.R).toBeDefined();
+    expect(h.muzzles.L).toBeUndefined();
+    applyPose(h, attack.pose(0, u, h.hipHeight));
+    expect(h.muzzles.R!.flash.visible).toBe(false);
+    applyPose(h, attack.pose(0.75, u, h.hipHeight));
+    expect(h.muzzles.R!.flash.visible).toBe(true);
+    expect(h.muzzles.R!.smoke.visible).toBe(false);
+    applyPose(h, attack.pose(1, u, h.hipHeight));
+    expect(h.muzzles.R!.smoke.visible).toBe(true);
+    disposeHumanoid(h);
   });
 });
 

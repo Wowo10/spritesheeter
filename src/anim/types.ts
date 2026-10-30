@@ -47,6 +47,10 @@ export interface Pose {
   opacity?: number;
   /** A sack slung over this shoulder, held by the hand on that side; hidden when absent. */
   load?: 'L' | 'R';
+  /** This hand has thrown what it held, so it's hidden; held when absent. */
+  thrown?: 'L' | 'R';
+  /** Guns firing: a flash at the muzzle, then smoke; neither when absent. */
+  muzzle?: Partial<Record<'L' | 'R', 'flash' | 'smoke'>>;
 }
 
 /** One sheet row. Defaults to the humanoid's params and pose; beasts bring their own. */

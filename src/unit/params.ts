@@ -74,6 +74,18 @@ export const HAND_ITEMS = [
   'buckler',
   'boardShield',
   'bow',
+  'crossbow',
+  // two-handed
+  'greatsword',
+  'maul',
+  'greataxe',
+  // thrown, then another drawn
+  'javelin',
+  'bomb',
+  'throwingAxe',
+  // fired: a flash at the muzzle, then smoke
+  'musket',
+  'pistol',
 ] as const;
 
 export type Helmet = (typeof HELMETS)[number];
@@ -87,7 +99,11 @@ export type Body = (typeof BODIES)[number];
 export type ShieldItem = 'roundShield' | 'kiteShield' | 'towerShield' | 'buckler' | 'boardShield';
 /** Held over the open palm, glowing in the magic colour. */
 export type OrbItem = 'orb' | 'skull' | 'lantern' | 'spellbook';
-export type WeaponItem = Exclude<HandItem, 'none' | 'bow' | OrbItem | ShieldItem>;
+/** Swung in both hands. */
+export type HeavyItem = 'greatsword' | 'maul' | 'greataxe';
+/** Thrown at the enemy. */
+export type ThrowItem = 'javelin' | 'bomb' | 'throwingAxe';
+export type WeaponItem = Exclude<HandItem, 'none' | 'bow' | 'crossbow' | 'musket' | 'pistol' | OrbItem | ShieldItem>;
 export type Hand = 'L' | 'R';
 
 export interface UnitParams {
@@ -130,8 +146,11 @@ export interface UnitParams {
 /** How high a floating unit's hips hover above where they'd be standing. */
 export const HOVER = 0.16;
 
-/** How an item is held and swung; drives both the model and the animations. */
-export type ItemKind = 'none' | 'chop' | 'thrust' | 'shield' | 'bow' | 'orb';
+/**
+ * How an item is held and swung; drives both the model and the animations. Shouldered items
+ * (crossbow, musket) are aimed from the shoulder, held level.
+ */
+export type ItemKind = 'none' | 'chop' | 'thrust' | 'shield' | 'bow' | 'shouldered' | 'pistol' | 'heavy' | 'throw' | 'orb';
 
 export function itemKind(item: HandItem): ItemKind {
   switch (item) {
@@ -178,6 +197,17 @@ export function itemKind(item: HandItem): ItemKind {
     case 'lantern':
     case 'spellbook':
       return 'orb';
+    case 'greatsword':
+    case 'maul':
+    case 'greataxe':
+      return 'heavy';
+    case 'javelin':
+    case 'bomb':
+    case 'throwingAxe':
+      return 'throw';
+    case 'crossbow':
+    case 'musket':
+      return 'shouldered';
     default:
       return item;
   }
@@ -185,13 +215,23 @@ export function itemKind(item: HandItem): ItemKind {
 
 export const otherHand = (h: Hand): Hand => (h === 'L' ? 'R' : 'L');
 
+/** A bow (the other hand draws the string), a musket (it steadies the barrel) or a weapon swung in both hands. */
+export const twoHanded = (item: HandItem) => item === 'bow' || item === 'musket' || itemKind(item) === 'heavy';
+
 /**
- * What each hand actually holds. A bow needs both hands (the other one draws the string),
- * so it empties the other hand; with two bows the left one wins.
+ * How far from the lead fist, toward the pommel (the hand's +Y), the other fist grips a
+ * two-handed weapon: touching on a sword's long grip, further apart on a haft.
+ */
+export const SECOND_GRIP: Record<HeavyItem, number> = { greatsword: 0.14, maul: 0.24, greataxe: 0.24 };
+
+/**
+ * What each hand actually holds. A two-handed item empties the other hand; with two of them
+ * the left one wins. A crossbow or pistol is held in one: the other keeps whatever it holds,
+ * and steadies a crossbow only if it's empty.
  */
 export function handItems(p: UnitParams): Record<Hand, HandItem> {
-  if (p.leftHand === 'bow') return { L: 'bow', R: 'none' };
-  if (p.rightHand === 'bow') return { L: 'none', R: 'bow' };
+  if (twoHanded(p.leftHand)) return { L: p.leftHand, R: 'none' };
+  if (twoHanded(p.rightHand)) return { L: 'none', R: p.rightHand };
   return { L: p.leftHand, R: p.rightHand };
 }
 
@@ -391,6 +431,13 @@ export const PRESETS: Record<string, UnitParams> = {
   brute: { ...BASE, bulk: 1.4, headSize: 1.15, shoulderWidth: 1.15, armLength: 1.12, armThickness: 1.2, legLength: 0.9, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'club', leftHand: 'none', skin: 'greenSkin' },
   pirate: { ...BASE, bulk: 0.95, helmet: 'tricorn', face: 'eyepatch', armor: 'none', rightHand: 'sabre', leftHand: 'none', hairStyle: 'long', hair: 'dark' },
   monk: { ...BASE, bulk: 0.95, helmet: 'none', armor: 'robe', rightHand: 'crook', leftHand: 'none', hairStyle: 'bald', magic: 'holy' },
+  crossbowman: { ...BASE, helmet: 'cap', armor: 'chain', rightHand: 'crossbow', leftHand: 'none' },
+  champion: { ...BASE, bulk: 1.15, helmet: 'full', armor: 'plate', rightHand: 'greatsword', leftHand: 'none', cape: 'broad' },
+  crusher: { ...BASE, bulk: 1.3, headSize: 1.1, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'maul', leftHand: 'none', skin: 'greenSkin' },
+  skirmisher: { ...BASE, bulk: 0.9, helmet: 'cap', armor: 'leather', rightHand: 'javelin', leftHand: 'roundShield' },
+  bomber: { ...BASE, helmet: 'bandana', armor: 'none', rightHand: 'bomb', leftHand: 'none', hairStyle: 'short', hair: 'dark' },
+  buccaneer: { ...BASE, bulk: 0.95, helmet: 'tricorn', armor: 'none', rightHand: 'pistol', leftHand: 'sabre', hairStyle: 'long', hair: 'dark' },
+  musketeer: { ...BASE, helmet: 'featherCap', armor: 'chain', rightHand: 'musket', leftHand: 'none', cape: 'long' },
 };
 
 /** Everything that's swung or thrust. */
@@ -405,13 +452,15 @@ const OFF_HAND: HandItem[] = [
   'torch',
   ...HAND_ITEMS.filter((i) => itemKind(i) === 'orb'),
 ];
+const HEAVY = HAND_ITEMS.filter((i) => itemKind(i) === 'heavy');
+const THROWN = HAND_ITEMS.filter((i) => itemKind(i) === 'throw');
 /** Second weapons: anything swung one-handed. */
 const SIDEARMS = HAND_ITEMS.filter((i) => itemKind(i) === 'chop' && i !== 'scythe');
 
 export function randomUnit(seed: number): UnitParams {
   const rng = mulberry32(seed);
   const archer = rng() < 0.15;
-  return {
+  const unit: UnitParams = {
     seed,
     height: round2(range(rng, 0.9, 1.12)),
     bulk: round2(range(rng, 0.85, 1.3)),
@@ -441,6 +490,20 @@ export function randomUnit(seed: number): UnitParams {
     shadow: false,
     face: rng() < 0.1 ? 'eyepatch' : 'none',
   };
+  // a third of the archers carry a crossbow instead, its other hand free to steady it
+  if (archer && rng() < 0.35) {
+    unit.rightHand = 'crossbow';
+    unit.leftHand = 'none';
+  }
+  if (!archer && rng() < 0.1) {
+    // a few of the rest swing a weapon in both hands
+    unit.rightHand = pick(rng, HEAVY);
+    unit.leftHand = 'none';
+  } else if (!archer && rng() < 0.1) {
+    // and a few others throw theirs, keeping whatever the other hand holds
+    unit.rightHand = pick(rng, THROWN);
+  }
+  return unit;
 }
 
 function round2(n: number): number {

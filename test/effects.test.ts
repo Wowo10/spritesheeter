@@ -37,6 +37,10 @@ describe('effects', () => {
       [5, false],
       [4, true],
       [1, true],
+      [4, true],
+      [4, true],
+      [5, false],
+      [1, true],
     ]);
   });
 

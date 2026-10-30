@@ -2,8 +2,8 @@ import { CylinderGeometry, Group, IcosahedronGeometry, Mesh, Object3D } from 'th
 import { JOINTS, type JointName, type Pose } from '../anim/types';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
-import { bodyDims, handItems, itemKind, type OrbItem, type ShieldItem, type UnitParams, type WeaponItem } from './params';
-import { buildBow, buildCape, buildFace, buildHelmet, buildOrb, buildQuiver, buildShield, buildWeapon, PartBuilder } from './parts';
+import { bodyDims, handItems, itemKind, type Hand, type OrbItem, type ShieldItem, type UnitParams, type WeaponItem } from './params';
+import { buildBow, buildCape, buildCrossbow, buildMusket, buildPistol, buildFace, buildHelmet, buildOrb, buildQuiver, buildShield, buildWeapon, PartBuilder } from './parts';
 
 const DEG = Math.PI / 180;
 
@@ -23,6 +23,10 @@ export interface Humanoid {
   load: Group;
   /** Ground shadow, if the unit has one; stays on the ground and shrinks as the hips rise. */
   shadow: Mesh | null;
+  /** What each hand holds; hidden while a pose has it thrown. */
+  grips: Record<Hand, Group>;
+  /** A gun's muzzle flash and smoke, per hand holding one; shown when a pose fires it. */
+  muzzles: Partial<Record<Hand, { flash: Object3D; smoke: Object3D }>>;
 }
 
 interface Outfit {
@@ -87,7 +91,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   if (o.tabard) {
     b.box(spine, p.cloth, [torsoW * 0.62, torsoLen * 0.95, torsoD + 0.03], [0, torsoLen * 0.42, 0]);
   }
-  if (items.L === 'bow' || items.R === 'bow') buildQuiver(b, spine, torsoLen, torsoD);
+  if ([items.L, items.R].some((i) => i === 'bow' || i === 'crossbow')) buildQuiver(b, spine, torsoLen, torsoD);
 
   // cape joints always exist so poses can set them; they're just empty without a cape
   link(spine, joints.cape, [0, torsoLen - 0.04, -torsoD / 2 - 0.04]);
@@ -130,6 +134,8 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     for (const side of [1, -1]) b.box(joints.head, p.magic, [head * 0.2, head * 0.13, 0.03], [side * head * 0.22, headCenter + head * 0.05, head / 2 + 0.01]);
   }
 
+  const grips = {} as Record<Hand, Group>;
+  const muzzles: Humanoid['muzzles'] = {};
   for (const side of ['L', 'R'] as const) {
     const x = (side === 'L' ? 1 : -1) * (torsoW / 2 + armT / 2);
     const shoulder = joints[`shoulder${side}`];
@@ -145,12 +151,16 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     b.box(hand, p.skin, [armT * 1.15, armT * 1.15, armT * 1.15], [0, -armT * 0.4, 0]);
 
     const grip = new Group();
+    grip.name = `grip${side}`;
     grip.position.y = -armT * 0.4;
     hand.add(grip);
+    grips[side] = grip;
     const item = items[side];
     switch (itemKind(item)) {
       case 'chop':
       case 'thrust':
+      case 'heavy':
+      case 'throw':
         buildWeapon(b, grip, item as WeaponItem, p);
         break;
       case 'shield':
@@ -159,10 +169,20 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
       case 'bow':
         buildBow(b, grip);
         break;
+      case 'shouldered':
+        if (item === 'musket') buildMusket(b, grip, p);
+        else buildCrossbow(b, grip, p);
+        break;
+      case 'pistol':
+        buildPistol(b, grip, p);
+        break;
       case 'orb':
         buildOrb(b, grip, item as OrbItem, p);
         break;
     }
+    const flash = grip.getObjectByName('flash');
+    const smoke = grip.getObjectByName('smoke');
+    if (flash && smoke) muzzles[side] = { flash, smoke };
   }
 
   // a ghost's legs are joints without meshes, so every pose still works on it
@@ -211,7 +231,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     b.box(fx, p.magic, [0.07, 0.07, 0.07], [Math.cos(a) * 0.27, Math.sin(a) * 0.27, 0], [45, 45, 0]);
   }
 
-  return { root, body, joints, hipHeight, fx, load, shadow };
+  return { root, body, joints, hipHeight, fx, load, shadow, grips, muzzles };
 }
 
 export function applyPose(unit: Humanoid, pose: Pose): void {
@@ -233,6 +253,14 @@ export function applyPose(unit: Humanoid, pose: Pose): void {
   }
 
   unit.load.visible = pose.load !== undefined;
+  for (const side of ['L', 'R'] as const) {
+    unit.grips[side].visible = pose.thrown !== side;
+    const muzzle = unit.muzzles[side];
+    if (muzzle) {
+      muzzle.flash.visible = pose.muzzle?.[side] === 'flash';
+      muzzle.smoke.visible = pose.muzzle?.[side] === 'smoke';
+    }
+  }
   unit.load.position.x = (pose.load === 'R' ? -1 : 1) * unit.load.userData.x;
 
   const scale = pose.fx?.scale ?? 0;

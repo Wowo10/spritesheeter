@@ -426,6 +426,51 @@ export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p:
       b.cylinder(hand, 'dark', 0.2, 0.06, [0, -0.45, 0], [90, 0, 0], 10);
       b.cylinder(hand, 'steel', 0.16, 0.02, [0, -0.45, 0.025], [90, 0, 0], 10);
       break;
+    // thrown: light enough to throw, chunky enough to see
+    case 'javelin':
+      b.box(hand, 'wood', [0.05, 1.25, 0.05], [0, -0.375, 0]);
+      b.box(hand, p.cloth, [0.08, 0.1, 0.08], [0, -0.12, 0]); // binding where it's held
+      b.cone(hand, 'steel', 0.07, 0.24, [0, -1.1, 0], [180, 0, 0]);
+      break;
+    case 'bomb':
+      // sitting on the fist, fuse lit
+      b.mesh(hand, new IcosahedronGeometry(0.17, 1), 'dark', [0, -0.17, 0]);
+      b.cylinder(hand, p.metal, 0.06, 0.05, [0, -0.34, 0]);
+      b.box(hand, 'leather', [0.025, 0.08, 0.025], [0, -0.39, 0]); // fuse
+      b.box(hand, 'fire', [0.07, 0.07, 0.07], [0, -0.45, 0], [45, 45, 0]);
+      break;
+    case 'throwingAxe':
+      b.box(hand, 'wood', [0.06, 0.48, 0.06], [0, -0.14, 0]);
+      b.box(hand, 'steel', [0.06, 0.14, 0.14], [0, -0.32, -0.09]);
+      b.box(hand, 'steel', [0.06, 0.24, 0.05], [0, -0.32, -0.18]); // flared edge
+      break;
+    // two-handed: the grip or haft runs back past the fist for the other hand (SECOND_GRIP)
+    case 'greatsword':
+      b.box(hand, 'leather', [0.055, 0.34, 0.055], [0, 0.07, 0]);
+      b.box(hand, p.metal, [0.09, 0.07, 0.09], [0, 0.27, 0]); // pommel
+      b.box(hand, p.metal, [0.34, 0.06, 0.09], [0, -0.12, 0]); // crossguard
+      b.box(hand, 'steel', [0.16, 0.85, 0.15], [0, -0.57, 0]);
+      b.cone(hand, 'steel', 0.1, 0.14, [0, -1.06, 0], [180, 45, 0]); // point
+      break;
+    case 'maul':
+      b.box(hand, 'wood', [0.08, 1.1, 0.08], [0, -0.25, 0]);
+      b.box(hand, p.metal, [0.3, 0.3, 0.48], [0, -0.85, 0]);
+      b.box(hand, 'dark', [0.32, 0.06, 0.5], [0, -0.85, 0]); // band round the head
+      break;
+    case 'greataxe': {
+      b.box(hand, 'wood', [0.08, 1.15, 0.08], [0, -0.27, 0]);
+      // a crescent drawn with x along the hand's Z, its edge leading
+      const blade = new Shape();
+      blade.moveTo(-0.03, -0.62);
+      blade.lineTo(-0.2, -0.48);
+      blade.quadraticCurveTo(-0.42, -0.73, -0.2, -0.98);
+      blade.lineTo(-0.03, -0.84);
+      blade.closePath();
+      b.mesh(hand, new ExtrudeGeometry(blade, { depth: 0.07, bevelEnabled: false }), 'steel', [0.035, 0, 0], [0, -90, 0]);
+      b.cone(hand, p.metal, 0.05, 0.18, [0, -0.73, 0.12], [90, 0, 0]); // spike on the back
+      b.cone(hand, 'steel', 0.045, 0.12, [0, -0.88, 0], [180, 0, 0]);
+      break;
+    }
     case 'spear':
       b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
       b.cone(hand, 'steel', 0.09, 0.3, [0, head - 0.13, 0], [180, 0, 0]);
@@ -586,6 +631,79 @@ export function buildBow(b: PartBuilder, hand: Object3D): void {
   const curve = new QuadraticBezierCurve3(new Vector3(0, 0.18, -0.55), new Vector3(0, -0.18, 0), new Vector3(0, 0.18, 0.55));
   b.mesh(hand, new TubeGeometry(curve, 8, 0.05, 4), 'wood');
   b.box(hand, 'bone', [0.015, 0.015, 1.1], [0, 0.18, 0]); // string
+}
+
+/**
+ * The stock runs along the hand's -Z, resting on top of the fist (-Y), so the crossbow is level
+ * and points forward when shoulder + elbow + wrist pitch add up to 180 (forearm upright, aiming
+ * from the shoulder). Loaded: a bolt lies in the groove, the string across in front of the hand.
+ */
+export function buildCrossbow(b: PartBuilder, hand: Object3D, p: UnitParams): void {
+  const y = -0.08;
+  b.box(hand, 'wood', [0.07, 0.07, 0.62], [0, y, -0.19]); // stock
+  b.box(hand, 'wood', [0.08, 0.1, 0.14], [0, y + 0.015, 0.06]); // butt, against the shoulder
+  // the prod sweeps forward to the tip of the stock
+  const curve = new QuadraticBezierCurve3(new Vector3(-0.28, y, -0.34), new Vector3(0, y, -0.5), new Vector3(0.28, y, -0.34));
+  b.mesh(hand, new TubeGeometry(curve, 6, 0.035, 4), p.metal);
+  b.box(hand, 'bone', [0.56, 0.015, 0.015], [0, y, -0.34]); // string
+  b.box(hand, 'wood', [0.025, 0.025, 0.3], [0, y - 0.045, -0.3]); // bolt
+  b.cone(hand, p.metal, 0.025, 0.06, [0, y - 0.045, -0.48], [-90, 0, 0]);
+}
+
+/**
+ * Same hold as the crossbow (see buildCrossbow): the stock along the hand's -Z on top of the
+ * fist, level when shoulder + elbow + wrist pitch add up to 180. The barrel runs well past the
+ * stock, the muzzle at its end.
+ */
+export function buildMusket(b: PartBuilder, hand: Object3D, p: UnitParams): void {
+  const y = -0.08;
+  b.box(hand, 'wood', [0.07, 0.08, 0.7], [0, y, -0.17]); // stock
+  b.box(hand, 'wood', [0.08, 0.13, 0.16], [0, y + 0.02, 0.1]); // butt, against the shoulder
+  b.box(hand, p.metal, [0.045, 0.045, 0.62], [0, y - 0.055, -0.6]); // barrel
+  b.box(hand, p.metal, [0.04, 0.07, 0.07], [0.04, y - 0.04, 0.02]); // flintlock
+  buildMuzzle(b, hand, [0, y - 0.055, -0.93], [-90, 0, 0]);
+}
+
+/**
+ * Flintlock pistol: the barrel continues the arm along -Y, level when shoulder + elbow + wrist
+ * pitch add up to 90 (arm straight out); the curved grip drops toward -Z, below the hand when aimed.
+ */
+export function buildPistol(b: PartBuilder, hand: Object3D, p: UnitParams): void {
+  b.box(hand, 'wood', [0.06, 0.16, 0.08], [0, 0.02, -0.02], [-25, 0, 0]); // grip, in the fist
+  b.box(hand, p.metal, [0.08, 0.06, 0.09], [0, 0.1, -0.06]); // butt cap
+  b.box(hand, 'wood', [0.07, 0.2, 0.07], [0, -0.15, 0.02]); // stock under the barrel
+  b.box(hand, p.metal, [0.05, 0.36, 0.05], [0, -0.22, 0.05]); // barrel
+  b.box(hand, p.metal, [0.07, 0.04, 0.07], [0, -0.41, 0.05]); // flared muzzle
+  b.box(hand, 'dark', [0.03, 0.06, 0.05], [0.04, -0.04, 0.06]); // flintlock
+  buildMuzzle(b, hand, [0, -0.46, 0.05], [180, 0, 0]);
+}
+
+/**
+ * A flash and a puff of smoke at a gun's muzzle, `rot` turning +Y out of the barrel; both
+ * hidden until a pose fires the gun.
+ */
+function buildMuzzle(b: PartBuilder, hand: Object3D, at: V3, rot: V3): void {
+  const muzzle = new Object3D();
+  muzzle.name = 'muzzle';
+  muzzle.position.set(...at);
+  muzzle.rotation.set(rot[0] * DEG, rot[1] * DEG, rot[2] * DEG);
+  hand.add(muzzle);
+  const flash = new Object3D();
+  flash.name = 'flash';
+  flash.visible = false;
+  muzzle.add(flash);
+  // a burst of fire out of the barrel, flaring sideways where it leaves
+  b.mesh(flash, new IcosahedronGeometry(0.1, 0), 'fire', [0, 0.1, 0]);
+  b.cone(flash, 'fire', 0.08, 0.22, [0, 0.24, 0]);
+  for (const [x, z] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) b.box(flash, 'fire', [0.06, 0.06, 0.06], [x * 0.12, 0.08, z * 0.12], [45, 45, 0]);
+  const smoke = new Object3D();
+  smoke.name = 'smoke';
+  smoke.visible = false;
+  muzzle.add(smoke);
+  // bunched round the muzzle rather than strung out along the barrel, which may point any way by then
+  for (const [x, y, z, r] of [[0, 0.1, 0, 0.17], [0.14, 0.14, 0.06, 0.14], [-0.12, 0.16, -0.06, 0.13]]) {
+    b.mesh(smoke, new IcosahedronGeometry(r, 0), 'fur', [x, y, z]);
+  }
 }
 
 /** How far a broad cape's side panels fold forward around the body, in degrees. */

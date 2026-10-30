@@ -21,7 +21,7 @@ import { applyBeastPose, buildBeast, disposeBeast, type Beast } from './unit/bea
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
 import { applyMountedPose, buildMounted, copyMounted, disposeMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, randomMounted, type Mounted, type MountedParams } from './unit/mounted';
 import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
-import { ARMORS, BODIES, CAPES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, randomUnit, type HandItem, type UnitParams } from './unit/params';
+import { ARMORS, BODIES, CAPES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, itemKind, randomUnit, twoHanded, type HandItem, type ThrowItem, type UnitParams } from './unit/params';
 import { applyVehiclePose, buildVehicle, disposeVehicle, type Vehicle } from './unit/vehicle';
 import { randomVehicle, VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
@@ -427,7 +427,20 @@ function exportAllTeams(): void {
 /** What a vehicle's weapon shoots, whether it attacks or "casts"; a ram strikes up close. */
 const VEHICLE_SHOTS: Record<VehicleParams['weapon'], Projectile | null> = { ram: null, catapult: 'stone', ballista: 'javelin', flamethrower: 'fireball' };
 
-const hasBow = (u: UnitParams) => Object.values(handItems(u)).includes('bow');
+const THROWN: Record<ThrowItem, Projectile> = { javelin: 'javelin', bomb: 'bomb', throwingAxe: 'throwingAxe' };
+
+/**
+ * What the unit's attack lets fly, picked as the attack picks its hand: bows and crossbows
+ * shoot arrows, muskets and pistols bullets; failing those, the right hand's throwing item,
+ * then the left's. Null is melee.
+ */
+function projectileOf(u: UnitParams): Projectile | null {
+  const items = handItems(u);
+  if ([items.L, items.R].some((i) => i === 'bow' || i === 'crossbow')) return 'arrow';
+  if ([items.L, items.R].some((i) => i === 'musket' || i === 'pistol')) return 'bullet';
+  const thrown = (i: HandItem) => (itemKind(i) === 'throw' ? THROWN[i as ThrowItem] : null);
+  return thrown(items.R) ?? thrown(items.L);
+}
 
 /**
  * How far the unit gets per loop of walk and run (from its leg length and how far its legs
@@ -438,14 +451,14 @@ function playgroundUnit(): Pick<PlaygroundOptions, 'stride' | 'attack' | 'cast' 
   const legs = (hip: number) => ({ walk: 1.9 * hip, run: 2.8 * hip });
   if (state.source === 'model' && custom) return { stride: legs(state.model.height / 2), attack: null, cast: 'bolt', channel: true };
   if (beast) return { stride: legs(beast.hipHeight), attack: null, cast: state.beast.breath ? 'fireball' : null, channel: state.beast.breath };
-  if (mounted) return { stride: legs(mounted.beast.hipHeight), attack: hasBow(state.mounted.rider) ? 'arrow' : null, cast: 'bolt', channel: true };
+  if (mounted) return { stride: legs(mounted.beast.hipHeight), attack: projectileOf(state.mounted.rider), cast: 'bolt', channel: true };
   if (vehicle) {
     // the wheels turn a quarter turn a loop walking, half a turn running
     const r = vehicle.dims.wheelR;
     const shot = VEHICLE_SHOTS[state.vehicle.weapon];
     return { stride: { walk: (Math.PI * r) / 2, run: Math.PI * r }, attack: shot, cast: shot, channel: state.vehicle.weapon === 'flamethrower' };
   }
-  return { stride: legs(unit!.hipHeight), attack: hasBow(state.unit) ? 'arrow' : null, cast: 'bolt', channel: true };
+  return { stride: legs(unit!.hipHeight), attack: projectileOf(state.unit), cast: 'bolt', channel: true };
 }
 
 /** Two of the unit, in the team colour and a rival's, to order around on a grid. */
@@ -607,12 +620,12 @@ const seedOf = {
 };
 
 /**
- * A bow takes both hands: picking one empties the other hand, and picking
- * anything for the other hand puts the bow away.
+ * A bow or a two-handed weapon takes both hands: picking one empties the other hand, and
+ * picking anything for the other hand puts it away. A crossbow takes one.
  */
 function onHandChange(u: UnitParams, key: 'rightHand' | 'leftHand', item: HandItem): void {
   const other = key === 'rightHand' ? 'leftHand' : 'rightHand';
-  if (item === 'bow' || (item !== 'none' && u[other] === 'bow')) {
+  if (twoHanded(item) || (item !== 'none' && twoHanded(u[other]))) {
     u[other] = 'none';
     refreshGui();
   }

@@ -5,7 +5,7 @@ import { drawDepot, drawMine } from './props';
 import { directionOf, durationOf, frameAt, SpriteSet, yawOf, type Strip } from './sprites';
 
 /** Effects-sheet rows a unit can shoot. */
-export type Projectile = 'arrow' | 'bolt' | 'fireball' | 'stone' | 'javelin';
+export type Projectile = 'arrow' | 'bolt' | 'fireball' | 'stone' | 'javelin' | 'bomb' | 'throwingAxe' | 'bullet';
 
 export interface PlaygroundOptions {
   /** Shown in the status bar. */
@@ -84,7 +84,7 @@ interface Shot {
   arc: number;
   damage: number;
   /** Shown where it lands. */
-  burst: 'impact' | 'puff' | null;
+  burst: 'impact' | 'puff' | 'blast' | null;
 }
 
 /** A one-shot effect playing at a spot. */
@@ -130,11 +130,11 @@ const GOLD_PER_TRIP = 10;
 const RESPAWN = 3;
 
 // ranges and speeds are in frame widths (a frame's size in world units), so they suit any scale
-const RANGE: Record<Projectile, number> = { arrow: 3.2, javelin: 3.6, stone: 4.2, bolt: 3, fireball: 2.4 };
-const SPEED: Record<Projectile, number> = { arrow: 6, javelin: 6, stone: 2.6, bolt: 3.5, fireball: 3 };
+const RANGE: Record<Projectile, number> = { arrow: 3.2, javelin: 3.6, stone: 4.2, bolt: 3, fireball: 2.4, bomb: 2.8, throwingAxe: 2.6, bullet: 3.4 };
+const SPEED: Record<Projectile, number> = { arrow: 6, javelin: 6, stone: 2.6, bolt: 3.5, fireball: 3, bomb: 2.6, throwingAxe: 5, bullet: 14 };
 /** Peak height of the flight, per unit of distance. */
-const ARC: Record<Projectile, number> = { arrow: 0.15, javelin: 0.08, stone: 0.4, bolt: 0, fireball: 0 };
-const BURST: Record<Projectile, Shot['burst']> = { arrow: null, javelin: null, stone: 'puff', bolt: 'impact', fireball: 'impact' };
+const ARC: Record<Projectile, number> = { arrow: 0.15, javelin: 0.08, stone: 0.4, bolt: 0, fireball: 0, bomb: 0.45, throwingAxe: 0.12, bullet: 0 };
+const BURST: Record<Projectile, Shot['burst']> = { arrow: null, javelin: null, stone: 'puff', bolt: 'impact', fireball: 'impact', bomb: 'blast', throwingAxe: null, bullet: 'puff' };
 const CHANNEL_RANGE = 2;
 
 const COMMANDS = [
@@ -746,7 +746,7 @@ class Playground {
       }
       if (this.now - s.start < s.flight) return true;
       const pos = this.shotPos(s);
-      if (s.burst) this.burst(s.burst, s.to, s.burst === 'puff' ? this.chest * 0.4 : s.to.h, s.team, pos.yaw);
+      if (s.burst) this.burst(s.burst, s.to, s.burst === 'impact' ? s.to.h : this.chest * 0.4, s.team, pos.yaw);
       if (isUnit(s.target)) this.damage(s.target, s.damage, s.source);
       else {
         // a shot at the ground hurts whoever it lands near
@@ -756,7 +756,7 @@ class Playground {
     });
   }
 
-  private burst(name: 'impact' | 'puff', at: Vec, h: number, team: number, yaw: number): void {
+  private burst(name: NonNullable<Shot['burst']>, at: Vec, h: number, team: number, yaw: number): void {
     const strip = this.fx?.strips.get(name);
     if (strip) this.bursts.push({ x: at.x, z: at.z, h, strip, start: this.now, team, yaw });
   }

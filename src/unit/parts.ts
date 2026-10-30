@@ -491,6 +491,18 @@ export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p:
       b.mesh(hand, new ExtrudeGeometry(blade, { depth: 0.06, bevelEnabled: false }), 'steel', [0.03, 0, 0], [0, -90, 0]);
       break;
     }
+    case 'sickle': {
+      b.box(hand, 'wood', [0.05, 0.24, 0.05], [0, -0.03, 0]);
+      b.box(hand, p.metal, [0.07, 0.04, 0.07], [0, -0.16, 0]); // ferrule
+      // drawn like the scythe's blade: a crescent bowing out behind, then hooking round forward
+      const blade = new Shape();
+      blade.moveTo(0.035, -0.16);
+      blade.quadraticCurveTo(0.12, -0.52, -0.25, -0.36);
+      blade.quadraticCurveTo(0.01, -0.42, -0.035, -0.16);
+      blade.closePath();
+      b.mesh(hand, new ExtrudeGeometry(blade, { depth: 0.05, bevelEnabled: false }), 'steel', [0.025, 0, 0], [0, -90, 0]);
+      break;
+    }
     case 'fryingPan':
       b.box(hand, 'wood', [0.05, 0.34, 0.05], [0, -0.09, 0]);
       // the flat bottom leads, for a good clang

@@ -54,9 +54,11 @@ export const HAND_ITEMS = [
   'pickaxe',
   'shovel',
   'torch',
+  // swung in both hands, though listed here, so random units keep their weapons
   'scythe',
+  'sickle',
   'fryingPan',
-  // polearms, thrust
+  // polearms: the pointed ones thrust, the blunt ones (banner on) are swung like a staff
   'spear',
   'halberd',
   'lance',
@@ -109,7 +111,7 @@ export type ShieldItem = 'roundShield' | 'kiteShield' | 'towerShield' | 'buckler
 /** Held over the open palm, glowing in the magic colour. */
 export type OrbItem = 'orb' | 'skull' | 'lantern' | 'spellbook';
 /** Swung in both hands. */
-export type HeavyItem = 'greatsword' | 'maul' | 'greataxe';
+export type HeavyItem = 'greatsword' | 'maul' | 'greataxe' | 'scythe';
 /** Thrown at the enemy. */
 export type ThrowItem = 'javelin' | 'bomb' | 'throwingAxe';
 export type WeaponItem = Exclude<HandItem, 'none' | 'bow' | 'crossbow' | 'musket' | 'pistol' | OrbItem | ShieldItem>;
@@ -162,7 +164,7 @@ export const HOVER = 0.16;
  * How an item is held and swung; drives both the model and the animations. Shouldered items
  * (crossbow, musket) are aimed from the shoulder, held level.
  */
-export type ItemKind = 'none' | 'chop' | 'thrust' | 'shield' | 'bow' | 'shouldered' | 'pistol' | 'heavy' | 'throw' | 'orb';
+export type ItemKind = 'none' | 'chop' | 'thrust' | 'staff' | 'shield' | 'bow' | 'shouldered' | 'pistol' | 'heavy' | 'throw' | 'orb';
 
 export function itemKind(item: HandItem): ItemKind {
   switch (item) {
@@ -183,7 +185,7 @@ export function itemKind(item: HandItem): ItemKind {
     case 'pickaxe':
     case 'shovel':
     case 'torch':
-    case 'scythe':
+    case 'sickle':
     case 'fryingPan':
       return 'chop';
     case 'spear':
@@ -191,14 +193,16 @@ export function itemKind(item: HandItem): ItemKind {
     case 'lance':
     case 'trident':
     case 'glaive':
-    case 'banner':
     case 'pitchfork':
+      return 'thrust';
+    // blunt poles: held upright like a spear, but swung to whack
+    case 'banner':
     case 'broom':
     case 'rake':
     case 'crook':
     case 'fishingRod':
     case 'staff':
-      return 'thrust';
+      return 'staff';
     case 'roundShield':
     case 'kiteShield':
     case 'towerShield':
@@ -212,6 +216,7 @@ export function itemKind(item: HandItem): ItemKind {
     case 'greatsword':
     case 'maul':
     case 'greataxe':
+    case 'scythe':
       return 'heavy';
     case 'javelin':
     case 'bomb':
@@ -234,7 +239,7 @@ export const twoHanded = (item: HandItem) => item === 'bow' || item === 'musket'
  * How far from the lead fist, toward the pommel (the hand's +Y), the other fist grips a
  * two-handed weapon: touching on a sword's long grip, further apart on a haft.
  */
-export const SECOND_GRIP: Record<HeavyItem, number> = { greatsword: 0.14, maul: 0.24, greataxe: 0.24 };
+export const SECOND_GRIP: Record<HeavyItem, number> = { greatsword: 0.14, maul: 0.24, greataxe: 0.24, scythe: 0.26 };
 
 /**
  * What each hand actually holds. A two-handed item empties the other hand; with two of them
@@ -462,8 +467,11 @@ export const PRESETS: Record<string, UnitParams> = {
   musketeer: { ...BASE, helmet: 'featherCap', armor: 'chain', rightHand: 'musket', leftHand: 'none', cape: 'long' },
 };
 
-/** Everything that's swung or thrust. */
-const WEAPONS = HAND_ITEMS.filter((i) => itemKind(i) === 'chop' || itemKind(i) === 'thrust');
+/**
+ * Everything that's swung or thrust. The scythe stays from before it took both hands, and
+ * the sickle, added later, is drawn last (see randomUnit), so every seed keeps its weapon.
+ */
+const WEAPONS = HAND_ITEMS.filter((i) => (itemKind(i) === 'chop' && i !== 'sickle') || itemKind(i) === 'thrust' || itemKind(i) === 'staff' || i === 'scythe');
 /** What an off hand holds when it isn't a second weapon. */
 const OFF_HAND: HandItem[] = [
   ...HAND_ITEMS.filter((i) => itemKind(i) === 'shield'),
@@ -474,10 +482,10 @@ const OFF_HAND: HandItem[] = [
   'torch',
   ...HAND_ITEMS.filter((i) => itemKind(i) === 'orb'),
 ];
-const HEAVY = HAND_ITEMS.filter((i) => itemKind(i) === 'heavy');
+const HEAVY = HAND_ITEMS.filter((i) => itemKind(i) === 'heavy' && i !== 'scythe');
 const THROWN = HAND_ITEMS.filter((i) => itemKind(i) === 'throw');
-/** Second weapons: anything swung one-handed. */
-const SIDEARMS = HAND_ITEMS.filter((i) => itemKind(i) === 'chop' && i !== 'scythe');
+/** Second weapons: anything swung one-handed (the sickle is drawn last, see WEAPONS). */
+const SIDEARMS = HAND_ITEMS.filter((i) => itemKind(i) === 'chop' && i !== 'sickle');
 
 /** The skins random units were first drawn from; the later ones are drawn last, so every seed keeps its other fields. */
 const FIRST_SKINS: RampName[] = ['skin', 'greenSkin', 'paleSkin'];
@@ -545,6 +553,10 @@ export function randomUnit(seed: number): UnitParams {
       unit.hair = pick(rng, ['bone', 'blue', 'green'] as RampName[]);
     }
   }
+  // the sickle came later still: now and then it stands in for a one-handed weapon
+  for (const h of ['rightHand', 'leftHand'] as const) if (itemKind(unit[h]) === 'chop' && unit[h] !== 'torch' && rng() < 0.06) unit[h] = 'sickle';
+  // a scythe now takes both hands (handItems already ignored the other)
+  if (unit.rightHand === 'scythe') unit.leftHand = 'none';
   return unit;
 }
 

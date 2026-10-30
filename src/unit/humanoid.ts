@@ -162,6 +162,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     switch (itemKind(item)) {
       case 'chop':
       case 'thrust':
+      case 'staff':
       case 'heavy':
       case 'throw':
         buildWeapon(b, grip, item as WeaponItem, p);

@@ -4,7 +4,7 @@ import { frameTime, type JointName } from '../src/anim/types';
 import { MaterialLibrary } from '../src/render/materials';
 import { applyPose, buildHumanoid, disposeHumanoid } from '../src/unit/humanoid';
 import { Quaternion, Vector3 } from 'three';
-import { GAITS, handItems, PRESETS, SECOND_GRIP, type HandItem, type HeavyItem, type UnitParams } from '../src/unit/params';
+import { GAITS, handItems, itemKind, PRESETS, SECOND_GRIP, type HandItem, type HeavyItem, type UnitParams } from '../src/unit/params';
 
 const attack = humanoidAnimations().find((a) => a.name === 'attack')!;
 const unit = (rightHand: HandItem, leftHand: HandItem): UnitParams => ({ ...PRESETS.swordsman, rightHand, leftHand });
@@ -75,6 +75,28 @@ describe('per-hand items', () => {
   });
 });
 
+describe('poles', () => {
+  // the pole's pitch: 180 is upright, 90 level in front
+  const pole = (u: UnitParams, t: number) => pitch(u, t, 'shoulderR') + pitch(u, t, 'elbowR') + pitch(u, t, 'handR');
+
+  it('blunt poles are swung like a staff, pointed ones thrust', () => {
+    for (const i of ['banner', 'broom', 'rake', 'crook', 'fishingRod', 'staff'] as const) expect(itemKind(i)).toBe('staff');
+    for (const i of ['spear', 'pitchfork', 'halberd'] as const) expect(itemKind(i)).toBe('thrust');
+  });
+
+  it('a staff is cocked back over the shoulder, then strikes level in front', () => {
+    const u = unit('crook', 'none');
+    expect(pole(u, 0)).toBeCloseTo(180);
+    expect(pole(u, 0.3)).toBeGreaterThan(200);
+    expect(pole(u, 0.75)).toBeGreaterThan(70);
+    expect(pole(u, 0.75)).toBeLessThan(120);
+  });
+
+  it('a spear still thrusts, levelled', () => {
+    expect(pitch(unit('spear', 'none'), 0.5, 'handR')).toBe(0);
+  });
+});
+
 describe('two-handed weapons', () => {
   const mats = new MaterialLibrary();
 
@@ -82,6 +104,8 @@ describe('two-handed weapons', () => {
     expect(handItems(unit('greatsword', 'kiteShield'))).toEqual({ L: 'none', R: 'greatsword' });
     expect(handItems(unit('sword', 'maul'))).toEqual({ L: 'maul', R: 'none' });
     expect(handItems(unit('greataxe', 'bow'))).toEqual({ L: 'bow', R: 'none' });
+    expect(handItems(unit('scythe', 'kiteShield'))).toEqual({ L: 'none', R: 'scythe' });
+    expect(itemKind('sickle')).toBe('chop');
   });
 
   // the other fist closes on the grip in every frame it should, whatever the lead arm does
@@ -90,7 +114,7 @@ describe('two-handed weapons', () => {
     ['crusher', PRESETS.crusher],
   ];
   for (const [name, body] of bodies) {
-    for (const item of ['greatsword', 'maul', 'greataxe'] as HeavyItem[]) {
+    for (const item of ['greatsword', 'maul', 'greataxe', 'scythe'] as HeavyItem[]) {
       for (const lead of ['R', 'L'] as const) {
         it(`${name}: both hands on the ${item}, ${lead} leading`, () => {
           const u: UnitParams = { ...body, rightHand: lead === 'R' ? item : 'none', leftHand: lead === 'L' ? item : 'none' };

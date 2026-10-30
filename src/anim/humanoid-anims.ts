@@ -26,6 +26,8 @@ const ARM_REST: Record<ItemKind, Arm> = {
   chop: { shoulder: [15, 0, 8], elbow: [40, 0, 0], hand: [95, 0, 0] },
   // spear held upright: forearm forward, wrist turned up
   thrust: { shoulder: [15, 0, 8], elbow: [75, 0, 0], hand: [90, 0, 0] },
+  // staff held upright the same way
+  staff: { shoulder: [15, 0, 8], elbow: [75, 0, 0], hand: [90, 0, 0] },
   // shield in front of the body; the model's shield mount assumes this forearm pitch
   shield: { shoulder: [20, 0, 10], elbow: [60, 0, 0], hand: [0, 0, 0] },
   bow: { shoulder: [20, 0, 8], elbow: [25, 0, 0], hand: [0, 0, 0] },
@@ -56,7 +58,7 @@ function restArm(unit: UnitParams, kind: ItemKind): Arm {
  * Total arm pitch at which the hand holds each kind upright while casting (orbs float above the
  * palm, crossbows and muskets stay level, pistols point at the sky).
  */
-const CAST_WRIST: Partial<Record<ItemKind, number>> = { chop: 180, thrust: 180, orb: 90, shouldered: 180, pistol: 180, heavy: 180, throw: 180 };
+const CAST_WRIST: Partial<Record<ItemKind, number>> = { chop: 180, thrust: 180, staff: 180, orb: 90, shouldered: 180, pistol: 180, heavy: 180, throw: 180 };
 
 function setArm(j: Joints, h: Hand, a: Arm): void {
   j[`shoulder${h}`] = a.shoulder;
@@ -116,7 +118,7 @@ function idle(t: number, unit: UnitParams): Pose {
   for (const h of HANDS) {
     // shoulders rise on the in-breath; weapons bob with them, shields sag a little
     nudge(joints, `shoulder${h}`, [4 * breath, 0, 3 * breath]);
-    if (k[h] === 'chop' || k[h] === 'thrust' || k[h] === 'heavy' || k[h] === 'throw' || k[h] === 'pistol') nudge(joints, `hand${h}`, [6 * breath, 0, 0]);
+    if (k[h] === 'chop' || k[h] === 'thrust' || k[h] === 'staff' || k[h] === 'heavy' || k[h] === 'throw' || k[h] === 'pistol') nudge(joints, `hand${h}`, [6 * breath, 0, 0]);
     if (k[h] === 'shield') nudge(joints, `elbow${h}`, [-6 * breath, 0, 0]);
     // the orb bobs up and down above the palm
     if (k[h] === 'orb') nudge(joints, `elbow${h}`, [8 * breath, 0, 0]);
@@ -128,7 +130,7 @@ function idle(t: number, unit: UnitParams): Pose {
 }
 
 /** How far each arm counter-swings while walking; hands full of gear swing less. */
-const WALK_SWING: Record<ItemKind, number> = { none: 18, bow: 18, shouldered: 10, pistol: 10, heavy: 5, throw: 12, chop: 12, thrust: 12, shield: 8, orb: 6 };
+const WALK_SWING: Record<ItemKind, number> = { none: 18, bow: 18, shouldered: 10, pistol: 10, heavy: 5, throw: 12, chop: 12, thrust: 12, staff: 12, shield: 8, orb: 6 };
 
 function walk(t: number, unit: UnitParams): Pose {
   const phase = t * Math.PI * 2;
@@ -381,6 +383,36 @@ function thrustArm(t: number): Arm {
   };
 }
 
+/**
+ * Staff blow: cocked back over the shoulder, the head trailing behind the hand, then the wrist
+ * snaps it over to strike level in front, swept in toward the centre line.
+ */
+function staffArm(t: number): Arm {
+  return {
+    shoulder: rotKeys(t, [
+      [0, ARM_REST.staff.shoulder],
+      [0.3, [130, 0, 25]],
+      [0.5, [150, 0, 20]],
+      [0.75, [75, 0, -15]],
+      [1, [25, 0, 8]],
+    ]),
+    elbow: rotKeys(t, [
+      [0, ARM_REST.staff.elbow],
+      [0.3, [80, 0, 0]],
+      [0.5, [50, 0, 0]],
+      [0.75, [10, 0, 0]],
+      [1, [65, 0, 0]],
+    ]),
+    hand: rotKeys(t, [
+      [0, ARM_REST.staff.hand],
+      [0.3, [40, 0, 0]],
+      [0.5, [40, 0, 0]],
+      [0.75, [10, 0, 0]],
+      [1, [80, 0, 0]],
+    ]),
+  };
+}
+
 /** Shield bash or punch: cock the arm back, then drive it straight forward. */
 function bashArm(t: number, rest: Arm): Arm {
   return {
@@ -405,6 +437,7 @@ function bashArm(t: number, rest: Arm): Arm {
 function attackArm(kind: ItemKind, t: number, rest: Arm): Arm {
   if (kind === 'chop') return chopArm(t);
   if (kind === 'thrust') return thrustArm(t);
+  if (kind === 'staff') return staffArm(t);
   return bashArm(t, rest);
 }
 
@@ -426,6 +459,20 @@ function attackBody(kind: ItemKind, t: number): BodyMotion {
       ]),
       legs: { hipL: [14, 0, 5], hipR: [-12, 0, 5] },
       hips: [0, keys(t, [[0, -0.02], [0.75, -0.08], [1, -0.04]]), keys(t, [[0, 0], [0.75, 0.06], [1, 0.02]])],
+    };
+  }
+  if (kind === 'staff') {
+    // turns the lead shoulder back to wind up, then twists hard through the blow
+    return {
+      spine: rotKeys(t, [
+        [0, [-3, 0, 0]],
+        [0.3, [6, 18, 0]],
+        [0.5, [4, 14, 0]],
+        [0.75, [-14, -18, 0]],
+        [1, [-6, 0, 0]],
+      ]),
+      legs: { hipL: [16, 0, 6], hipR: [-12, 0, 6] },
+      hips: [0, keys(t, [[0, -0.02], [0.75, -0.07], [1, -0.04]]), keys(t, [[0, 0], [0.3, -0.03], [0.75, 0.07], [1, 0.02]])],
     };
   }
   // thrusts lunge with the whole body; bashes and punches do the same, a little less
@@ -681,10 +728,12 @@ function smash(t: number, joints: Joints, lead: Hand): Pose {
 }
 
 /**
- * Greatsword: wound back to the lead side, then swept across at waist height to the far side,
- * the torso turning through the swing. Authored for a right-hand lead.
+ * Greatsword or scythe: wound back to the lead side, then swept across at waist height to the
+ * far side, the torso turning through the swing. Authored for a right-hand lead. `wrist` holds
+ * the hand through the swing: a scythe's is tipped down and twisted, so it reaps low with the
+ * blade leading instead of hanging down.
  */
-function sweep(t: number, joints: Joints, lead: Hand): Pose {
+function sweep(t: number, joints: Joints, lead: Hand, wrist: JointRot = [0, 0, 0]): Pose {
   const rest = ARM_REST.heavy;
   // yaw > 0 swings the arm out to its own side, < 0 across the body
   setArm(joints, lead, {
@@ -703,8 +752,8 @@ function sweep(t: number, joints: Joints, lead: Hand): Pose {
     ]),
     hand: rotKeys(t, [
       [0, rest.hand],
-      [0.3, [0, 0, 0]],
-      [0.75, [0, 0, 0]],
+      [0.3, wrist],
+      [0.75, wrist],
       [1, rest.hand],
     ]),
   });
@@ -736,7 +785,11 @@ function sweep(t: number, joints: Joints, lead: Hand): Pose {
   };
 }
 
+/** Wrist through a scythe's sweep: tipped down to reap low, twisted so the blade leads. */
+const SCYTHE_WRIST: JointRot = [-35, 90, 0];
+
 function attackHeavy(t: number, joints: Joints, item: HandItem, lead: Hand): Pose {
+  if (item === 'scythe') return sweep(t, joints, lead, SCYTHE_WRIST);
   return item === 'greatsword' ? sweep(t, joints, lead) : smash(t, joints, lead);
 }
 
@@ -879,7 +932,7 @@ function attack(t: number, unit: UnitParams): Pose {
 
   // weapons attack; failing that, orbs are thrust at the enemy, then shields bash;
   // with empty hands, the right one punches, or a shambler claws with both
-  const armed = HANDS.filter((h) => k[h] === 'chop' || k[h] === 'thrust');
+  const armed = HANDS.filter((h) => k[h] === 'chop' || k[h] === 'thrust' || k[h] === 'staff');
   const orbs = HANDS.filter((h) => k[h] === 'orb');
   const shields = HANDS.filter((h) => k[h] === 'shield');
   const attackers: Hand[] = armed.length ? armed : orbs.length ? orbs : shields.length ? shields : unit.gait === 'shamble' ? HANDS : ['R'];
@@ -1194,7 +1247,7 @@ function hit(t: number, unit: UnitParams): Pose {
  */
 function work(t: number, unit: UnitParams): Pose {
   const k = kinds(unit);
-  const tools = HANDS.filter((h) => k[h] === 'chop' || k[h] === 'thrust' || k[h] === 'heavy');
+  const tools = HANDS.filter((h) => k[h] === 'chop' || k[h] === 'thrust' || k[h] === 'staff' || k[h] === 'heavy');
   const lead: Hand = tools.includes('R') || tools.length === 0 ? 'R' : 'L';
   const swing: Arm = {
     shoulder: rotKeys(t, [

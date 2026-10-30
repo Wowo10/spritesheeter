@@ -350,6 +350,7 @@ function shade(): void {
     (ss < state.sprite.supersample ? ` · supersample ${ss} (max for this frame size)` : '');
   shadeEffects();
   shadePortrait();
+  showPortrait();
   applyTeam();
 }
 

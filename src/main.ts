@@ -735,12 +735,14 @@ function linkedAccount(name: string): string | null {
 }
 // ko-fi and github share a row like undo / redo, each only once its account is filled in
 const links = [
-  { label: '☕ ko-fi', account: linkedAccount('kofi'), site: 'https://ko-fi.com/' },
-  { label: '🐙 github', account: linkedAccount('github'), site: 'https://github.com/' },
+  { label: '☕ ko-fi', account: linkedAccount('kofi'), site: 'https://ko-fi.com/', style: 'linkKofi' },
+  { label: '⭐ github', account: linkedAccount('github'), site: 'https://github.com/', style: 'linkGithub' },
 ].filter((link) => link.account);
-const linkButtons = links.map(({ label, account, site }) => {
+const linkButtons = links.map(({ label, account, site, style }) => {
   const controller = tools.add({ open: () => window.open(site + account, '_blank', 'noopener') }, 'open').name(label);
-  return { controller, button: controller.domElement.querySelector('button')! };
+  const button = controller.domElement.querySelector('button')!;
+  button.classList.add(style);
+  return { controller, button };
 });
 if (linkButtons.length > 1) {
   const [first, ...rest] = linkButtons;

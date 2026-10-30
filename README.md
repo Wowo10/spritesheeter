@@ -20,7 +20,7 @@ Other scripts:
 | `npm run preview` | Serves the built `dist/` |
 | `npm test` | Runs the unit tests (Vitest) |
 | `npm run insert_g_secret -- G-XXXXXXXXXX` | After `build`, writes your Google Analytics ID into `dist/index.html` in place of the `__G_ANA_SECRET__` placeholder. Without it the placeholder stays and analytics is off. |
-| `npm run insert_links -- <ko-fi name> <github user>` | After `build`, writes your Ko-fi and GitHub accounts into `dist/index.html` in place of the `__KOFI_ACCOUNT__` and `__GITHUB_ACCOUNT__` placeholders. This shows the **☕ ko-fi** and **🐙 github** buttons under **🎮 playground**. The GitHub value can also be `user/repo`. Pass `-` to leave a button hidden. Without it both buttons stay hidden. |
+| `npm run insert_links -- <ko-fi name> <github user>` | After `build`, writes your Ko-fi and GitHub accounts into `dist/index.html` in place of the `__KOFI_ACCOUNT__` and `__GITHUB_ACCOUNT__` placeholders. This shows the **☕ ko-fi** and **⭐ github** buttons under **🎮 playground**. The GitHub value can also be `user/repo`. Pass `-` to leave a button hidden. Without it both buttons stay hidden. |
 
 ## The interface
 

@@ -35,6 +35,10 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* several buttons side by side in one lil-gui row (undo / redo, ko-fi / github) */
 .lil-gui .buttonRow .widget { gap: 4px; }
 .lil-gui .buttonRow button:disabled { opacity: 0.5; pointer-events: none; }
+/* the ko-fi and github buttons wear their sites' colours */
+.lil-gui button.linkKofi, .lil-gui button.linkKofi:hover { background: #ff5e5b; color: #fff; }
+.lil-gui button.linkGithub, .lil-gui button.linkGithub:hover { background: #24292f; color: #fff; box-shadow: inset 0 0 0 1px #57606a; }
+.lil-gui button.linkKofi:hover, .lil-gui button.linkGithub:hover { filter: brightness(1.2); }
 @media (max-width: 900px) {
   #app { grid-template-columns: 1fr; grid-template-rows: 50vh auto; height: auto; }
   #splitter { display: none; }

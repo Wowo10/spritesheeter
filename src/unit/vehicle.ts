@@ -1,6 +1,8 @@
 import { BoxGeometry, Group, IcosahedronGeometry, Mesh, Object3D } from 'three';
 import type { VehiclePose } from '../anim/types';
+import type { DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
+import { METAL_RAMPS } from '../render/palette';
 import { PartBuilder } from './parts';
 import { vehicleDims, type VehicleDims, type VehicleParams } from './vehicle-params';
 
@@ -403,6 +405,14 @@ export function applyVehiclePose(v: Vehicle, pose: VehiclePose): void {
       tongue.position.z = 0.1 * flame.size + len / 2;
     });
   }
+}
+
+/**
+ * Burns out: the timbers scorch, then are charred, thinner beams; cloth, rope and leather burn
+ * away. The metal fittings are left lying in the ashes.
+ */
+export function vehicleDecay(p: VehicleParams): DecayRecipe {
+  return { flesh: [p.wood], rotted: 'hair', bare: 'dark', thin: 0.6, keep: [...METAL_RAMPS, 'dark'], soft: { rot: 'hair', bare: 'hide' } };
 }
 
 export function disposeVehicle(v: Vehicle): void {

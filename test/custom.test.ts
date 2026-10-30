@@ -138,6 +138,7 @@ describe('guessing', () => {
       carry: null,
       taunt: null,
       build: null,
+      decay: null,
     });
   });
 

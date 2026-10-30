@@ -672,7 +672,11 @@ class Playground {
   }
 
   private updateDead(u: Unit): void {
-    const lies = u.anim.name === 'death' ? durationOf(u.anim) : 0;
+    const fell = u.anim.name === 'death' || u.anim.name === 'decay' ? durationOf(this.sprites.resolve('death')) : 0;
+    // the corpse rots, if the sheet has it, before it turns to dust
+    const decay = fell > 0 && this.sprites.has('decay') ? this.sprites.resolve('decay') : null;
+    if (decay && u.anim.name === 'death' && this.now - u.deadSince! >= fell) this.play(u, 'decay', true);
+    const lies = fell + (decay ? durationOf(decay) : 0);
     if (!u.puffed && this.now - u.deadSince! >= lies) {
       u.puffed = true;
       this.burst('puff', u, this.chest * 0.4, u.team, u.yaw);
@@ -879,7 +883,7 @@ class Playground {
     // back to front
     const things: { z: number; draw: () => void }[] = [
       ...[this.mine, this.depot].map((p) => ({ z: p.z, draw: () => this.drawProp(p) })),
-      ...this.units.filter((u) => u.deadSince === null || u.anim.name === 'death').map((u) => ({ z: u.z, draw: () => this.drawUnit(u) })),
+      ...this.units.filter((u) => u.deadSince === null || u.anim.name === 'death' || u.anim.name === 'decay').map((u) => ({ z: u.z, draw: () => this.drawUnit(u) })),
     ];
     things.sort((a, b) => a.z - b.z).forEach((t) => t.draw());
 

@@ -1,7 +1,8 @@
 import { CylinderGeometry, ExtrudeGeometry, Group, IcosahedronGeometry, Mesh, Object3D, Shape } from 'three';
 import { BEAST_JOINTS, type BeastJoint, type BeastPose } from '../anim/types';
+import type { DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
-import type { RampName } from '../render/palette';
+import { METAL_RAMPS, type RampName } from '../render/palette';
 import { beastDims, type BeastDims, type BeastParams } from './beast-params';
 import { PartBuilder } from './parts';
 
@@ -347,6 +348,15 @@ export function applyBeastPose(beast: Beast, pose: BeastPose): void {
     beast.fx.scale.setScalar(Math.max(scale, 0.01));
     beast.fx.rotation.z = (pose.fx.spin ?? 0) * DEG;
   }
+}
+
+/**
+ * Rots to a skeleton: hide and belly rot, then are bones; manes, wing membranes, saddles and
+ * collars rot away. Metal barding, horns, tusks and beaks are left lying with the bones.
+ */
+export function beastDecay(p: BeastParams): DecayRecipe {
+  const keep: RampName[] = [...METAL_RAMPS, 'bone', 'dark', ...(p.beak ? (['yellow'] as const) : [])];
+  return { flesh: [p.hide, p.belly], rotted: 'rotSkin', bare: 'bone', thin: 0.5, keep, soft: { rot: 'hair', bare: 'hide' } };
 }
 
 export function disposeBeast(beast: Beast): void {

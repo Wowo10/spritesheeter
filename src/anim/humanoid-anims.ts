@@ -1420,12 +1420,13 @@ function withSecondary(name: string, pose: AnimationDef['pose']): AnimationDef['
 }
 
 // new animations go last: rows of sheets games already use must not shift
-export const ANIMATION_NAMES = ['idle', 'walk', 'attack', 'cast', 'death', 'channel', 'hit', 'run', 'work', 'carry', 'taunt', 'build'] as const;
+// decay isn't posed: it's the end of death, rotting (see sheetRows in main.ts)
+export const ANIMATION_NAMES = ['idle', 'walk', 'attack', 'cast', 'death', 'channel', 'hit', 'run', 'work', 'carry', 'taunt', 'build', 'decay'] as const;
 export type AnimationName = (typeof ANIMATION_NAMES)[number];
 
 export type FrameCounts = Record<AnimationName, number>;
 
-export const DEFAULT_FRAME_COUNTS: FrameCounts = { idle: 4, walk: 5, attack: 5, cast: 6, death: 4, channel: 4, hit: 3, run: 6, work: 5, carry: 5, taunt: 6, build: 8 };
+export const DEFAULT_FRAME_COUNTS: FrameCounts = { idle: 4, walk: 5, attack: 5, cast: 6, death: 4, channel: 4, hit: 3, run: 6, work: 5, carry: 5, taunt: 6, build: 8, decay: 4 };
 
 /** The sheet's animations, top to bottom. */
 export function humanoidAnimations(counts: FrameCounts = DEFAULT_FRAME_COUNTS): AnimationDef[] {

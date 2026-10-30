@@ -57,7 +57,7 @@ With **type** set to `beast`, the unit is a four-legged animal. Presets: wolf, h
 - **magic breath:** the beast spits its spell in `cast` and breathes a steady stream of it in `channel`
 - **opacity, glowing eyes, ground shadow:** as for humanoids. A see-through beast fades away when it dies.
 
-Beasts fill the same sheet rows as humanoids: `attack` is a bite, `cast` is a roar (or spitting the spell, with magic breath), `death` keels over, `channel` is a snarling crouch (or the breath stream), `hit` is a yelp and recoil, `run` is a gallop (or a fast scramble for sprawled beasts), `work` digs with the front paws, `carry` plods along with packs on its back, and `taunt` rears up pawing the air (sprawled beasts snap and lash the tail instead; winged ones spread their wings). Long beasts like crocodiles nearly fill a 32 px frame; use 48 px or larger to give them room.
+Beasts fill the same sheet rows as humanoids: `attack` is a bite, `cast` is a roar (or spitting the spell, with magic breath), `death` keels over, `channel` is a snarling crouch (or the breath stream), `hit` is a yelp and recoil, `run` is a gallop (or a fast scramble for sprawled beasts), `work` digs with the front paws, `carry` plods along with packs on its back, and `taunt` rears up pawing the air (sprawled beasts snap and lash the tail instead; winged ones spread their wings). `decay` rots the body to a skeleton, leaving the horns, tusks, beak and any metal barding. Long beasts like crocodiles nearly fill a 32 px frame; use 48 px or larger to give them room.
 
 ### Mounted units
 
@@ -83,6 +83,7 @@ The rider sits astride the saddle, knees out over the mount's flanks; on a low m
 | `work` | digs | sits still |
 | `taunt` | rears | shakes its weapon overhead |
 | `death` | keels over | is thrown off and lands on the ground beside it |
+| `decay` | rots to a skeleton | rots to a skeleton beside it |
 
 A rider on its mount is far taller than a unit on foot, so switching to `mounted` raises the **frameSize** to 64 px. A wolf rider fits in 48 px.
 
@@ -113,6 +114,7 @@ Vehicles fill the same rows as units:
 | `work` | stands still |
 | `taunt` | waves its flag; a flamethrower spurts fire |
 | `death` | breaks down: the wheels on one side give way and it tips onto the ground, the flag pole falling |
+| `decay` | the wreck burns out: the timbers scorch, then are thinner, charred beams; cloth, rope and leather burn away, and the metal fittings are left |
 
 The wheels have four spokes, so a quarter turn per loop repeats seamlessly. To keep them from skidding, move a walking vehicle about 0.4 of a wheel's height per loop.
 
@@ -144,6 +146,7 @@ Buildings fill only some of the rows:
 | `work` | busy: every light on, smoke billowing out twice as fast, the front door open with light inside, the flag brisk |
 | `hit` | a jolt, the lights knocked out for a moment, then back as it was |
 | `death` | the lights go out, and the blocks crumble and lean over one after another, their roofs caving in, leaving rubble and wall stumps |
+| `decay` | the ruins weather: the walls go grey and the timbers dark, and the rubble and stumps settle lower |
 
 The other rows aren't in a building's sheet. Switching to `building` raises the **frameSize** to 128 px. The 🎮 playground is only for units that move and fight, so it doesn't open for buildings.
 
@@ -152,7 +155,7 @@ The other rows aren't in a building's sheet. Switching to `building` raises the 
 Load a **.glb / .gltf / .fbx / .obj** with **📂 load**, or drag it onto the page. For a `.gltf`, pick or drop its `.bin` and textures along with it.
 
 - **add animations from file:** adds clips from animation-only files, such as Mixamo "without skin" downloads. Dropping such a file on the page does the same.
-- **Sheet rows:** choose which clip fills each sheet row (idle, walk, attack, cast, death, channel, hit, run, work, carry, taunt). Rows are guessed from the clip names, and rows set to `(none)` are left out of the sheet. Looping clips are rendered in place, so root motion doesn't move the unit out of frame.
+- **Sheet rows:** choose which clip fills each sheet row (idle, walk, attack, cast, death, channel, hit, run, work, carry, taunt). Rows are guessed from the clip names, and rows set to `(none)` are left out of the sheet. A model with a death clip also gets a `decay` row, made from that clip's last frame: skin and hide rot and pale to bone, and everything else darkens. It's only recoloured, because a skinned model can't be thinned down to bones. Looping clips are rendered in place, so root motion doesn't move the unit out of frame.
 - **height / turn:** scale the model, and fix its facing if it was exported pointing the wrong way.
 - **Materials → palette:** map each of the model's materials to a palette ramp. Map a material to `team` to make it team-coloured.
 
@@ -160,7 +163,7 @@ Use **show** to switch between the procedural unit and the loaded model.
 
 ### Animation
 
-Pick which animation to **preview**, and set the frame count (1–12) for each one: `idle`, `walk`, `attack`, `cast`, `death`, `channel`, `hit`, `run`, `work`, `carry`, `taunt` and `build`. A row the unit doesn't have (`build` for anything but a building) is left out of its sheet.
+Pick which animation to **preview**, and set the frame count (1–12) for each one: `idle`, `walk`, `attack`, `cast`, `death`, `channel`, `hit`, `run`, `work`, `carry`, `taunt`, `build` and `decay`. A row the unit doesn't have (`build` for anything but a building) is left out of its sheet.
 
 - `channel`: a looping, sustained spell pose.
 - `hit`: a quick flinch when the unit takes damage, ending back in its stance.
@@ -168,6 +171,7 @@ Pick which animation to **preview**, and set the frame count (1–12) for each o
 - `work`: the tool or weapon hand swings its item overhead and down into the ground, with an empty other hand gripping it too. It reads as mining, chopping, digging or building.
 - `carry`: walks with a sack over the shoulder of the empty hand (the left if both or neither are empty).
 - `taunt`: plays once. Raises the weapon overhead and shakes it twice, shouting, while an empty free hand beckons.
+- `decay`: the corpse the `death` row ends on, rotting away over a few stages, one per frame. The first frame is the body as it fell. The flesh then rots, and the clothes, belts and hair rot away, until the last frame is bare bones, with any armour, helmet, weapons and shields left lying beside them. Each part rots in its own time, so the body comes apart piece by piece. **decay hold (s)** sets how many seconds a game shows each stage; the previews play it faster. Ghosts and see-through units fade away and leave no corpse, so they have no `decay` row.
 - `build`: a building under construction; see [Buildings](#buildings). A custom model's clip named like `construct` goes here.
 
 ### Sprite
@@ -234,7 +238,7 @@ The portrait doesn't re-render when you change its own settings, only when the u
 - **T** taunt, **G** gather, **S** stop. **R** switches moves between `walk` and `run`.
 - **Wheel** zooms in whole pixels, **middle-drag** pans, **Esc** closes.
 
-Units move as far per loop as their legs (or wheels) carry them, so you can see whether the feet slide. Bows and crossbows shoot arrows; javelins, throwing axes and bombs are thrown, bombs bursting into flame; muskets and pistols fire bullets; catapults, ballistas and flamethrowers shoot stones, javelins and fire. Everything else fights in melee. `cast` throws a spell bolt, or a fireball for beasts with **magic breath**. A beast without breath just roars. `channel` burns whatever it's aimed at. A hurt unit flinches (`hit`) and an idle one strikes back. At 0 HP it plays `death`, turns to dust and comes back a few seconds later. Gathering loops `work` at the mine for a few seconds, then `carry` back to the depot. Rows the sheet doesn't have are stood in for by similar ones (`run` by `walk`, `carry` by `walk`, `cast` by `attack`), or by `idle`.
+Units move as far per loop as their legs (or wheels) carry them, so you can see whether the feet slide. Bows and crossbows shoot arrows; javelins, throwing axes and bombs are thrown, bombs bursting into flame; muskets and pistols fire bullets; catapults, ballistas and flamethrowers shoot stones, javelins and fire. Everything else fights in melee. `cast` throws a spell bolt, or a fireball for beasts with **magic breath**. A beast without breath just roars. `channel` burns whatever it's aimed at. A hurt unit flinches (`hit`) and an idle one strikes back. At 0 HP it plays `death`, rots through `decay` at a stage a second, turns to dust and comes back a few seconds later. Gathering loops `work` at the mine for a few seconds, then `carry` back to the depot. Rows the sheet doesn't have are stood in for by similar ones (`run` by `walk`, `carry` by `walk`, `cast` by `attack`), or by `idle`.
 
 ## Undo
 
@@ -250,14 +254,14 @@ A custom model isn't included in the link, because its file can't travel in a UR
 
 ## Exporting
 
-The **Export** folder has a checkbox for each animation. Only the checked ones go into the exported sheet, packed top to bottom without gaps. By default that's `idle`, `walk`, `attack`, `death` and `build`. Check `cast` and `channel` for spellcasters, `work` and `carry` for workers, and `work` and `hit` for buildings. The previews always show every animation. The checkboxes are saved in share links too.
+The **Export** folder has a checkbox for each animation. Only the checked ones go into the exported sheet, packed top to bottom without gaps. By default that's `idle`, `walk`, `attack`, `death` and `build`. Check `cast` and `channel` for spellcasters, `work` and `carry` for workers, `work` and `hit` for buildings, and `decay` for corpses that rot away. The previews always show every animation. The checkboxes are saved in share links too.
 
 - **💾 export PNG + JSON:** writes `<name>-<team>.png` in the selected **team color**, plus `<name>.json`. The PNG is indexed: its palette is the JSON's `palette`, so a game can recolour a team by swapping 4 palette entries.
 - **team mask:** also writes `<name>-team-mask.png`: the team-coloured pixels alone, grey per shade, for recolouring in a shader. It's saved in share links.
 - **💾 export all team colors:** writes one PNG per team colour (red, blue, green, violet, orange, black, white, yellow) and a single JSON that lists them all.
 - **💾 export portrait:** writes the [portrait](#portrait) as `<name>-portrait-<team>.png` (indexed, like the unit sheet; an animated one is a strip of frames, left to right) and `<name>-portrait.json`. **team mask** works for it too.
 - **💾 export effects:** writes the effects sheet as `<name>-effects-<team>.png` (indexed, like the unit sheet) and `<name>-effects.json`. **team mask** works for it too.
-- **💾 export 3D model (.glb):** writes the procedural unit as `<name>-<team>.glb`, a binary glTF you can open in Blender, Godot, Unity and most 3D tools. Every animation is in it as a clip with the row's name (all of them, not just the checked ones), lasting as long as the row plays in the sheet and sampled at 30 keyframes a second. The unit is made of rigid parts on a node hierarchy rather than a skinned mesh, with one plain material per palette ramp in that ramp's colour. The team ramp gets the selected team colour, magic ramps glow and metal ramps are shiny. Parts that only show up sometimes, like the spell effect and the carried sack, are scaled to zero while hidden. The ground shadow is left out. See-through units get transparent materials, but the fade-outs in their death animations aren't carried over. A loaded custom model can't be exported this way; you already have its file.
+- **💾 export 3D model (.glb):** writes the procedural unit as `<name>-<team>.glb`, a binary glTF you can open in Blender, Godot, Unity and most 3D tools. Every animation is in it as a clip with the row's name (all of them, not just the checked ones), lasting as long as the row plays in the sheet and sampled at 30 keyframes a second. The unit is made of rigid parts on a node hierarchy rather than a skinned mesh, with one plain material per palette ramp in that ramp's colour. The team ramp gets the selected team colour, magic ramps glow and metal ramps are shiny. Parts that only show up sometimes, like the spell effect and the carried sack, are scaled to zero while hidden. The ground shadow is left out. See-through units get transparent materials, but the fade-outs in their death animations aren't carried over. `decay` is left out, because it recolours parts, which a glTF clip can't do. A loaded custom model can't be exported this way; you already have its file.
 
 **See [SPRITESHEET.md](SPRITESHEET.md) for how to use the exported sheet in a game:** the grid layout, the JSON fields, direction mirroring, the ground anchor, animation playback and team colours.
 

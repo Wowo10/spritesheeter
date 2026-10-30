@@ -1,5 +1,6 @@
 import { ConeGeometry, ExtrudeGeometry, Group, IcosahedronGeometry, Mesh, Object3D, Shape } from 'three';
 import type { BuildingPose } from '../anim/types';
+import type { DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
 import type { RampName } from '../render/palette';
 import { buildingLayout, hash01, NORMALS, type Block, type BuildingParams, type Layout, type Opening } from './building-params';
@@ -298,6 +299,8 @@ export function applyBuildingPose(bld: Building, pose: BuildingPose): void {
   const n = bld.blocks.length;
   const build = pose.build ?? 1;
   const collapse = pose.collapse ?? 0;
+  // the rubble settles: stumps and heaps sink lower
+  const settle = 1 - 0.7 * (pose.ruin ?? 0);
   const [sx, sz] = pose.shake ?? [0, 0];
   bld.body.position.set(sx, 0, sz);
 
@@ -309,14 +312,14 @@ export function applyBuildingPose(bld: Building, pose: BuildingPose): void {
     const roofK = clamp01((k - 0.7) / 0.3);
     const fall = clamp01((collapse - r.delay) / 0.6);
 
-    const wallScale = Math.max(0.001, wallK * (1 - 0.8 * fall));
+    const wallScale = Math.max(0.001, wallK * (1 - 0.8 * fall) * settle);
     r.walls.visible = wallK > 0;
     r.walls.scale.y = wallScale;
     const top = r.block.height * wallScale;
     // the roof caves in and is gone among the rubble before the walls are down
     r.roof.visible = roofK > 0 && fall < 0.7;
     r.roof.position.y = top;
-    r.roof.scale.y = Math.max(0.001, roofK * (1 - 0.6 * fall));
+    r.roof.scale.y = Math.max(0.001, roofK * (1 - 0.6 * fall) * settle);
     for (const o of r.openings) o.obj.visible = wallK > 0 && o.top <= top + 1e-6 && fall < 0.5;
 
     const lean = LEAN * fall * r.tilt.sign * DEG;
@@ -328,8 +331,8 @@ export function applyBuildingPose(bld: Building, pose: BuildingPose): void {
     for (const { mesh, r: radius } of r.rubble) {
       mesh.visible = fall > 0;
       const s = Math.max(0.001, fall);
-      mesh.scale.set(s, 0.6 * s, s);
-      mesh.position.y = 0.6 * radius * s;
+      mesh.scale.set(s, 0.6 * s * settle, s);
+      mesh.position.y = 0.6 * radius * s * settle;
     }
   }
 
@@ -351,6 +354,11 @@ export function applyBuildingPose(bld: Building, pose: BuildingPose): void {
   const open = pose.door ?? 0;
   bld.door.hinge.rotation.y = -100 * open * DEG;
   bld.door.inside.visible = open > 0.05 && pose.lights > 0;
+}
+
+/** Weathers: the walls go grey and everything else dark and rotten, while the rubble settles. */
+export function buildingDecay(p: BuildingParams): DecayRecipe {
+  return { flesh: [p.walls], rotted: 'fur', bare: 'fur', thin: 1, keep: ['dark', 'fur'], soft: { rot: 'hair', bare: 'hair' } };
 }
 
 export function disposeBuilding(bld: Building): void {

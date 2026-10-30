@@ -39,6 +39,9 @@ export function frameAt(s: Pick<Strip, 'frames' | 'fps' | 'loop'>, elapsed: numb
   return s.loop ? f % s.frames : Math.min(f, s.frames - 1);
 }
 
+/** A game holds each decay stage for seconds; here a corpse rots a stage a second. */
+const DECAY_FPS = 1;
+
 /** Rows that stand in for a missing one (a custom model may have only a few), before idle. */
 const FALLBACKS: Record<string, string[]> = {
   run: ['walk'],
@@ -78,7 +81,8 @@ export class SpriteSet {
           }),
         );
       });
-      this.strips.set(name, { name, frames: a.frames, fps: a.fps, loop: a.loop, cells });
+      const fps = a.hold ? Math.max(a.fps, DECAY_FPS) : a.fps;
+      this.strips.set(name, { name, frames: a.frames, fps, loop: a.loop, cells });
     }
   }
 

@@ -8,11 +8,12 @@ import { buildEffects, disposeEffects, type Effects } from './effects/effects';
 import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, humanoidAnimations, type AnimationName } from './anim/humanoid-anims';
 import { frameTime } from './anim/types';
 import { loadModelFiles, MODEL_EXTENSIONS } from './custom/load';
-import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
+import { CustomModel, customDecay, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
 import { downloadBinary, downloadJson, downloadPng, downloadTeamMask, sheetToCanvas } from './export/download';
 import { exportGlb, rowDuration } from './export/model';
 import { packSheet, packStrip, teamMeta, type AnimationFrames, type Sheet } from './export/packer';
 import { openPlayground, type PlaygroundOptions, type Projectile } from './playground/playground';
+import { applyDecay, clearDecay } from './render/decay';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
 import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, PALETTE, RAMP_NAMES, SKIN_RAMPS, TEAM_COLOR_NAMES, UNDEAD_SKIN_RAMPS, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
 import { DEFAULT_PORTRAIT, PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES, type PortraitHead, type PortraitSettings } from './render/portrait';
@@ -20,14 +21,14 @@ import { framePortrait, type IndexedFrame, type Outline } from './render/postpro
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, SpriteRenderer, type SpriteSettings } from './render/spriteRenderer';
 import { UndoHistory } from './history';
 import { decodeSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
-import { applyBeastPose, buildBeast, disposeBeast, type Beast } from './unit/beast';
-import { applyBuildingPose, buildBuilding, disposeBuilding, type Building } from './unit/building';
+import { applyBeastPose, beastDecay, buildBeast, disposeBeast, type Beast } from './unit/beast';
+import { applyBuildingPose, buildBuilding, buildingDecay, disposeBuilding, type Building } from './unit/building';
 import { DEFAULT_BUILDING, LIGHT_RAMPS, randomBuilding, ROOF_RAMPS, ROOFS, TRIM_RAMPS, WALL_RAMPS, type BuildingParams } from './unit/building-params';
 import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, randomBeast, WINGS, type BeastParams } from './unit/beast-params';
 import { applyMountedPose, buildMounted, copyMounted, disposeMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, randomMounted, type Mounted, type MountedParams } from './unit/mounted';
-import { applyPose, buildHumanoid, disposeHumanoid, type Humanoid } from './unit/humanoid';
+import { applyPose, buildHumanoid, disposeHumanoid, humanoidDecay, type Humanoid } from './unit/humanoid';
 import { ARMORS, BODIES, CAPES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, itemKind, randomUnit, twoHanded, type HandItem, type ThrowItem, type UnitParams } from './unit/params';
-import { applyVehiclePose, buildVehicle, disposeVehicle, type Vehicle } from './unit/vehicle';
+import { applyVehiclePose, buildVehicle, disposeVehicle, vehicleDecay, type Vehicle } from './unit/vehicle';
 import { randomVehicle, VEHICLE_PRESETS, WEAPONS, WOOD_RAMPS, type VehicleParams } from './unit/vehicle-params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
 import { CompassPreview, StripPreview } from './ui/spritePreview';
@@ -36,6 +37,8 @@ import './style.css';
 
 /** One-shot animations hold their last frame this long (in frames) before replaying. */
 const HOLD_FRAMES = 4;
+/** The previews play decay this fast, rather than a stage every few seconds as in the game. */
+const PREVIEW_DECAY_FPS = 2;
 
 const NO_CLIP = '(none)';
 
@@ -53,6 +56,8 @@ interface Playable {
   frames: number;
   fps: number;
   loop: boolean;
+  /** Seconds each frame is shown for, on rows played that slowly (decay); fps is 1 / hold. */
+  hold?: number;
   /** Returns the frame's opacity, if not 1. */
   apply: (t: number) => number | void;
 }
@@ -71,6 +76,8 @@ const state = {
   /** Buildings have no presets: the seed lays them out. */
   building: { ...DEFAULT_BUILDING } as BuildingParams,
   frames: { ...DEFAULT_FRAME_COUNTS },
+  /** Seconds each decay stage lies on the ground for. */
+  decayHold: 8,
   sprite: { ...DEFAULT_SPRITE_SETTINGS, thresholds: [...DEFAULT_SPRITE_SETTINGS.thresholds] } as SpriteSettings,
   lighting: {
     ambient: DEFAULT_LIGHTING.ambient,
@@ -148,8 +155,8 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
  * stays behind, since its file can't travel in a URL. The objects are state's own.
  */
 function sharedSettings() {
-  const { kind, preset, unit, beast, mounted, vehicle, building, frames, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team } = state;
-  return { kind, preset, unit, beast, mounted, vehicle, building, frames, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team };
+  const { kind, preset, unit, beast, mounted, vehicle, building, frames, decayHold, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team } = state;
+  return { kind, preset, unit, beast, mounted, vehicle, building, frames, decayHold, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team };
 }
 
 /** Applies the settings of a share link the page was opened from, before the GUI is built. */
@@ -235,10 +242,46 @@ function rebuild(): void {
 }
 
 /**
- * The sheet rows for whatever is shown. A custom model gets the rows it has clips for, with
- * the procedural rows' timing; without any it's a static model, one frame per direction.
+ * The sheet rows for whatever is shown, ending in decay for anything that leaves a corpse.
+ * Every row first puts back what decay rotted, so the next pose starts from the whole unit.
  */
 function sheetRows(): Playable[] {
+  const root = subjectRoot();
+  const { rows, rot } = posedRows();
+  const corpse = rows.find((r) => r.name === 'death');
+  const all = corpse && rot ? [...rows, decayRow(corpse, rot)] : rows;
+  return all.map((r) => ({
+    ...r,
+    apply: (t: number) => {
+      if (root) clearDecay(root);
+      return r.apply(t);
+    },
+  }));
+}
+
+/** The corpse the death row ends on, rotting by t, a stage per frame held decayHold seconds each. */
+function decayRow(death: Playable, rot: (t: number) => void): Playable {
+  const hold = Math.max(0.1, state.decayHold);
+  return {
+    name: 'decay',
+    frames: state.frames.decay,
+    fps: 1 / hold,
+    loop: false,
+    hold,
+    apply: (t) => {
+      const opacity = death.apply(1);
+      rot(t);
+      return opacity;
+    },
+  };
+}
+
+/**
+ * The posed rows, and how the corpse rots (null if it leaves none: ghosts and see-through units
+ * fade away). A custom model gets the rows it has clips for, with the procedural rows' timing;
+ * without any it's a static model, one frame per direction.
+ */
+function posedRows(): { rows: Playable[]; rot: ((t: number) => void) | null } {
   // a custom model may be a building going up
   const defs = [...humanoidAnimations(state.frames), ...buildingAnimations(state.frames).filter((d) => d.name === 'build')];
   const m = custom;
@@ -247,11 +290,13 @@ function sheetRows(): Playable[] {
       const clip = m.clip(state.model.rows[d.name as AnimationName]);
       return clip ? [{ name: d.name, frames: d.frames, fps: d.fps, loop: d.loop, apply: (t) => m.sample(clip, t, d.loop) }] : [];
     });
-    return rows.length > 0 ? rows : [{ name: 'idle', frames: 1, fps: 1, loop: true, apply: () => m.sample(null, 0, true) }];
+    const rot = (t: number) => applyDecay(m.root, t, mats, customDecay());
+    return { rows: rows.length > 0 ? rows : [{ name: 'idle', frames: 1, fps: 1, loop: true, apply: () => m.sample(null, 0, true) }], rot };
   }
+  const corpse = unitOpacity() === 1;
   const b = beast;
   if (b) {
-    return beastAnimations(state.frames).map((d) => ({
+    const rows = beastAnimations(state.frames).map((d) => ({
       ...d,
       apply: (t: number) => {
         const pose = d.pose(t, state.beast, b.hipHeight);
@@ -259,10 +304,11 @@ function sheetRows(): Playable[] {
         return pose.opacity;
       },
     }));
+    return { rows, rot: corpse ? (t) => applyDecay(b.root, t, mats, beastDecay(state.beast)) : null };
   }
   const m2 = mounted;
   if (m2) {
-    return mountedAnimations(state.frames).map((d) => ({
+    const rows = mountedAnimations(state.frames).map((d) => ({
       ...d,
       apply: (t: number) => {
         const pose = d.pose(t, state.mounted, 0);
@@ -270,23 +316,36 @@ function sheetRows(): Playable[] {
         return pose.opacity;
       },
     }));
+    const rot = (t: number) => {
+      applyDecay(m2.rider.root, t, mats, humanoidDecay(state.mounted.rider));
+      applyDecay(m2.beast.root, t, mats, beastDecay(state.mounted.mount));
+    };
+    return { rows, rot: corpse ? rot : null };
   }
   const v = vehicle;
   if (v) {
-    return vehicleAnimations(state.frames).map((d) => ({
+    const rows = vehicleAnimations(state.frames).map((d) => ({
       ...d,
       apply: (t: number) => applyVehiclePose(v, d.pose(t, state.vehicle, 0)),
     }));
+    return { rows, rot: (t) => applyDecay(v.root, t, mats, vehicleDecay(state.vehicle)) };
   }
   const bld = building;
   if (bld) {
-    return buildingAnimations(state.frames).map((d) => ({
+    const defs = buildingAnimations(state.frames);
+    const rows = defs.map((d) => ({
       ...d,
       apply: (t: number) => applyBuildingPose(bld, d.pose(t, state.building, 0)),
     }));
+    const death = defs.find((d) => d.name === 'death')!;
+    const rot = (t: number) => {
+      applyBuildingPose(bld, { ...death.pose(1, state.building, 0), ruin: t });
+      applyDecay(bld.root, t, mats, buildingDecay(state.building));
+    };
+    return { rows, rot };
   }
   const u = unit!;
-  return humanoidAnimations(state.frames).map((d) => ({
+  const rows = humanoidAnimations(state.frames).map((d) => ({
     ...d,
     apply: (t: number) => {
       const pose = d.pose(t, state.unit, u.hipHeight);
@@ -294,6 +353,7 @@ function sheetRows(): Playable[] {
       return pose.opacity;
     },
   }));
+  return { rows, rot: corpse && state.unit.body !== 'ghost' ? (t) => applyDecay(u.root, t, mats, humanoidDecay(state.unit)) : null };
 }
 
 /** What the sheet is rendered from: the loaded model or the procedural unit. */
@@ -313,6 +373,7 @@ function regenerate(): void {
     name: a.name,
     fps: a.fps,
     loop: a.loop,
+    hold: a.hold,
     frames: sprites.renderFrames(root, a.frames, (i) => a.apply(frameTime(a, i)), state.sprite),
   }));
   sheet = packSheet(rendered, anchorOf(state.sprite));
@@ -655,7 +716,7 @@ unitFolder
     // buildings are bigger still, and have only some of the rows
     if (kind === 'building') {
       if (state.sprite.frameSize < 128) state.sprite.frameSize = 128;
-      if (!BUILDING_ROWS.includes(state.previewAnim)) state.previewAnim = 'idle';
+      if (![...BUILDING_ROWS, 'decay'].includes(state.previewAnim)) state.previewAnim = 'idle';
     }
     rebindUnit();
     rebuild();
@@ -670,7 +731,8 @@ async function exportModel(): Promise<void> {
     alert('Export model works on the procedural unit. Switch "show" to the procedural unit to export it.');
     return;
   }
-  const anims = playables.map((a) => ({ name: a.name, duration: rowDuration(a.frames, a.fps, a.loop), apply: a.apply }));
+  // decay swaps ramps, which a glTF clip can't
+  const anims = playables.filter((a) => a.name !== 'decay').map((a) => ({ name: a.name, duration: rowDuration(a.frames, a.fps, a.loop), apply: a.apply }));
   const glb = await exportGlb(subject.root, anims, { team: state.team, opacity: unitOpacity() });
   downloadBinary(glb, `${exportName()}-${state.team}.glb`, 'model/gltf-binary');
 }
@@ -963,6 +1025,7 @@ animFolder.add(state, 'previewAnim', ANIMATION_NAMES).name('preview').onChange(s
 for (const name of ANIMATION_NAMES) {
   animFolder.add(state.frames, name, 1, 12, 1).name(`${name} frames`).onFinishChange(queueRegenerate);
 }
+animFolder.add(state, 'decayHold', 1, 60, 1).name('decay hold (s)').onFinishChange(queueRegenerate);
 
 const spriteFolder = restoreOpen(gui.addFolder('Sprite'), true);
 spriteFolder.add(state.sprite, 'frameSize', FRAME_SIZES).onFinishChange(queueRegenerate);
@@ -1114,7 +1177,8 @@ function rebindModel(): void {
 
   const rows = restoreOpen(modelFolder.addFolder('Sheet rows'));
   const clipNames = [NO_CLIP, ...m.clips.map((c) => c.name)];
-  for (const row of ANIMATION_NAMES) rows.add(state.model.rows, row, clipNames).name(`${row} clip`).onFinishChange(queueRegenerate);
+  // decay has no clip: it rots the death clip's last frame
+  for (const row of ANIMATION_NAMES.filter((r) => r !== 'decay')) rows.add(state.model.rows, row, clipNames).name(`${row} clip`).onFinishChange(queueRegenerate);
 
   const materials = restoreOpen(modelFolder.addFolder('Materials → palette'));
   for (const mat of m.materials) {
@@ -1122,6 +1186,8 @@ function rebindModel(): void {
       .add({ ramp: mat.ramp }, 'ramp', RAMP_NAMES)
       .name(mat.name)
       .onChange((ramp: RampName) => {
+        // or putting back a rotted corpse would undo the new ramp
+        clearDecay(m.root);
         m.setRamp(mat, ramp);
         queueRegenerate();
       });
@@ -1204,7 +1270,7 @@ const start = performance.now();
 function tick(now: number): void {
   const anim = playables.find((a) => a.name === state.previewAnim);
   if (anim) {
-    const phase = ((now - start) / 1000) * anim.fps;
+    const phase = ((now - start) / 1000) * (anim.hold ? PREVIEW_DECAY_FPS : anim.fps);
     let t: number;
     let frame: number;
     if (anim.loop) {

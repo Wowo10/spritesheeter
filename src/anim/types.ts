@@ -161,4 +161,6 @@ export interface BuildingPose {
   shake?: [x: number, z: number];
   /** 0-1: the blocks crumble, lean and drop into rubble. */
   collapse?: number;
+  /** 0-1: once fallen, the rubble settles, the stumps and heaps sinking lower. */
+  ruin?: number;
 }

@@ -14,8 +14,9 @@ import {
   type Texture,
 } from 'three';
 import { ANIMATION_NAMES, type AnimationName } from '../anim/humanoid-anims';
+import type { DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
-import { MAGIC_RAMPS, RAMP_NAMES, rampRgb, type RampName, type RGB } from '../render/palette';
+import { MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, rampRgb, SKIN_RAMPS, type RampName, type RGB } from '../render/palette';
 
 /** About the height of the procedural units, so custom models fit the same sprite settings. */
 export const DEFAULT_MODEL_HEIGHT = 1.8;
@@ -230,6 +231,15 @@ export function withoutDrift(clip: AnimationClip): AnimationClip {
   return c;
 }
 
+/**
+ * A loaded model's corpse: skin and hide rot and pale to bone, everything else darkens. Only
+ * recoloured, as its meshes are skinned and can't be thinned to bones piece by piece.
+ */
+export function customDecay(): DecayRecipe {
+  const flesh: RampName[] = [...SKIN_RAMPS, 'rotSkin', 'fur', 'tawny', 'scales'];
+  return { flesh, rotted: 'rotSkin', bare: 'bone', thin: 1, keep: [...METAL_RAMPS, 'wood', 'bone', 'dark'], soft: { rot: 'hair', bare: 'dark' } };
+}
+
 /** The ramps a material can be guessed onto: the team ramp only by name, glowing ones only for glowing materials. */
 const PLAIN_RAMPS = RAMP_NAMES.filter((r) => r !== 'team' && !MAGIC_RAMPS.includes(r));
 
@@ -317,6 +327,8 @@ const ROW_PATTERNS: Record<AnimationName, RegExp[]> = {
   taunt: [/taunt|challenge|provok/i, /cheer|victory|celebrat|shout|roar|flex/i],
   // a building going up; work has already taken any "build" clip a worker swings a hammer in
   build: [/construct|build|scaffold/i],
+  // made from the death clip's last frame, not a clip of its own
+  decay: [],
 };
 
 /** Picks a clip for each sheet row by name; rows with no likely clip get null. */

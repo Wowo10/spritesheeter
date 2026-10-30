@@ -6,6 +6,8 @@ export interface AnimationFrames {
   name: string;
   fps: number;
   loop: boolean;
+  /** Seconds each frame is shown for, on rows played that slowly (decay). */
+  hold?: number;
   /** Frames per rendered direction, all the same length. */
   frames: Map<Direction, IndexedFrame[]>;
 }
@@ -21,7 +23,7 @@ export interface SheetMeta {
   mirrored: Record<string, Direction>;
   /** Pixel inside each frame where the unit touches the ground. */
   anchor: { x: number; y: number };
-  animations: Record<string, { row: number; frames: number; fps: number; loop: boolean }>;
+  animations: Record<string, { row: number; frames: number; fps: number; loop: boolean; hold?: number }>;
   palette: RGB[];
   /** Palette entries to swap per player, and what to swap them to for each team colour. */
   team: { indices: number[]; colors: Record<TeamColor, RGB[]> };
@@ -52,7 +54,7 @@ export function packSheet(anims: AnimationFrames[], anchor: { x: number; y: numb
   let row = 0;
   for (const anim of anims) {
     const count = anim.frames.get(DIRECTIONS[0])!.length;
-    animations[anim.name] = { row, frames: count, fps: anim.fps, loop: anim.loop };
+    animations[anim.name] = { row, frames: count, fps: anim.fps, loop: anim.loop, ...(anim.hold !== undefined && { hold: anim.hold }) };
     DIRECTIONS.forEach((dir, col) => {
       const frames = anim.frames.get(dir);
       if (frames?.length !== count) throw new Error(`packSheet: ${anim.name}/${dir} has ${frames?.length} frames, expected ${count}`);

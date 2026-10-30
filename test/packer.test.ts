@@ -37,6 +37,13 @@ describe('packSheet', () => {
     expect(Object.keys(sheet.meta.team.colors)).toContain('blue');
   });
 
+  it('records a hold time only for rows that have one', () => {
+    const decay = { ...anim('decay', 2, 2), fps: 0.125, hold: 8 };
+    const meta = packSheet([anim('death', 1, 2), decay], { x: 1, y: 2 }).meta;
+    expect(meta.animations.decay).toEqual({ row: 2, frames: 2, fps: 0.125, loop: false, hold: 8 });
+    expect(meta.animations.death).not.toHaveProperty('hold');
+  });
+
   it('only ever uses palette colours or full transparency', () => {
     const rgba = indexedToRgba(new Uint8Array([0, 5, PALETTE.length - 1]));
     expect(Array.from(rgba.slice(0, 4))).toEqual([0, 0, 0, 0]);

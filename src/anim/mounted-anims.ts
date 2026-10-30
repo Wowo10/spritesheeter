@@ -76,8 +76,8 @@ interface Row {
   lean?: number;
 }
 
-/** Every row but the building's. */
-const ROWS: Record<Exclude<AnimationName, 'build'>, Row> = {
+/** Every row but the building's, and decay, which isn't posed. */
+const ROWS: Record<Exclude<AnimationName, 'build' | 'decay'>, Row> = {
   idle: { mount: 'idle', rider: 'idle' },
   walk: { mount: 'walk', rider: 'idle', cape: 'walk' },
   attack: { mount: 'walk', rider: 'attack' },

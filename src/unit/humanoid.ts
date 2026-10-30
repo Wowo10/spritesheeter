@@ -1,7 +1,8 @@
 import { CylinderGeometry, Group, IcosahedronGeometry, Mesh, Object3D } from 'three';
 import { JOINTS, type JointName, type Pose } from '../anim/types';
+import { markBody, type DecayRecipe } from '../render/decay';
 import type { MaterialLibrary } from '../render/materials';
-import type { RampName } from '../render/palette';
+import { METAL_RAMPS, type RampName } from '../render/palette';
 import { bodyDims, handItems, itemKind, type Hand, type OrbItem, type ShieldItem, type UnitParams, type WeaponItem } from './params';
 import { buildBow, buildCape, buildCrossbow, buildMusket, buildPistol, buildFace, buildHelmet, buildOrb, buildQuiver, buildShield, buildWeapon, PartBuilder } from './parts';
 
@@ -79,7 +80,7 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   root.add(body);
   const { hips, spine } = joints;
   link(body, hips, [0, hipHeight, 0]);
-  b.box(hips, o.pelvis, [hipW * 0.9, 0.16, torsoD * 0.95], [0, 0, 0]);
+  markBody(b.box(hips, o.pelvis, [hipW * 0.9, 0.16, torsoD * 0.95], [0, 0, 0]));
   if (o.robe && p.body !== 'ghost') {
     // flares from the waist to the knees; the cloth-covered shins below read as its hem
     const skirt = thigh * 0.95;
@@ -87,8 +88,8 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   }
 
   link(hips, spine, [0, 0.06, 0]);
-  b.box(spine, o.torso, [(hipW + torsoW) / 2 * 0.88, torsoLen * 0.5, torsoD * 0.92], [0, torsoLen * 0.25, 0]);
-  b.box(spine, o.torso, [torsoW, torsoLen * 0.55, torsoD], [0, torsoLen * 0.72, 0]);
+  markBody(b.box(spine, o.torso, [(hipW + torsoW) / 2 * 0.88, torsoLen * 0.5, torsoD * 0.92], [0, torsoLen * 0.25, 0]));
+  markBody(b.box(spine, o.torso, [torsoW, torsoLen * 0.55, torsoD], [0, torsoLen * 0.72, 0]));
   if (p.body !== 'ghost') b.box(spine, 'leather', [hipW * 0.92, 0.06, torsoD * 0.98], [0, 0.02, 0]); // belt
   if (o.tabard) {
     b.box(spine, p.cloth, [torsoW * 0.62, torsoLen * 0.95, torsoD + 0.03], [0, torsoLen * 0.42, 0]);
@@ -127,9 +128,9 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
   b.box(load, 'leather', [torsoW * 0.3, 0.07, torsoD * 0.5], [0, torsoLen * 0.32, torsoD * 0.05]); // tied neck
 
   link(spine, joints.head, [0, torsoLen, 0]);
-  b.box(joints.head, p.skin, [head * 0.45, 0.06, head * 0.45], [0, 0.03, 0]); // neck
+  markBody(b.box(joints.head, p.skin, [head * 0.45, 0.06, head * 0.45], [0, 0.03, 0])); // neck
   const headCenter = 0.05 + head / 2;
-  b.box(joints.head, p.skin, [head, head * 1.05, head], [0, headCenter, 0]);
+  markBody(b.box(joints.head, p.skin, [head, head * 1.05, head], [0, headCenter, 0]));
   buildHelmet(b, joints.head, p.helmet, { size: head, centerY: headCenter }, p);
   buildFace(b, joints.head, p.face, { size: head, centerY: headCenter });
   if (p.glowEyes) {
@@ -144,13 +145,13 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     const elbow = joints[`elbow${side}`];
     const hand = joints[`hand${side}`];
     link(spine, shoulder, [x, torsoLen - armT * 0.6, 0]);
-    b.box(shoulder, o.upperArm, [armT, upperArm, armT], [0, -upperArm / 2, 0]);
+    markBody(b.box(shoulder, o.upperArm, [armT, upperArm, armT], [0, -upperArm / 2, 0]));
     if (o.pauldrons) b.box(shoulder, p.metal, [armT * 1.6, armT * 0.9, armT * 1.6], [0, 0, 0]);
     link(shoulder, elbow, [0, -upperArm, 0]);
-    b.box(elbow, o.forearm, [armT * 0.92, forearm, armT * 0.92], [0, -forearm / 2, 0]);
+    markBody(b.box(elbow, o.forearm, [armT * 0.92, forearm, armT * 0.92], [0, -forearm / 2, 0]));
     if (o.robe) b.box(elbow, p.cloth, [armT * 1.4, forearm * 0.45, armT * 1.4], [0, -forearm * 0.72, 0]); // bell sleeve
     link(elbow, hand, [0, -forearm, 0]);
-    b.box(hand, p.skin, [armT * 1.15, armT * 1.15, armT * 1.15], [0, -armT * 0.4, 0]);
+    markBody(b.box(hand, p.skin, [armT * 1.15, armT * 1.15, armT * 1.15], [0, -armT * 0.4, 0]));
 
     const grip = new Group();
     grip.name = `grip${side}`;
@@ -196,8 +197,8 @@ export function buildHumanoid(p: UnitParams, mats: MaterialLibrary): Humanoid {
     link(hips, hip, [x, -hipDrop, 0]);
     link(hip, knee, [0, -thigh, 0]);
     if (ghost) continue;
-    b.box(hip, o.thigh, [legT, thigh, legT], [0, -thigh / 2, 0]);
-    b.box(knee, o.shin, [legT * 0.92, shin, legT * 0.92], [0, -shin / 2, 0]);
+    markBody(b.box(hip, o.thigh, [legT, thigh, legT], [0, -thigh / 2, 0]));
+    markBody(b.box(knee, o.shin, [legT * 0.92, shin, legT * 0.92], [0, -shin / 2, 0]));
     b.box(knee, 'leather', [legT * 1.05, footH, legT * 1.7], [0, -shin - footH / 2, legT * 0.3]); // foot
   }
 
@@ -272,6 +273,14 @@ export function applyPose(unit: Humanoid, pose: Pose): void {
     unit.fx.scale.setScalar(Math.max(scale, 0.01));
     unit.fx.rotation.z = (pose.fx.spin ?? 0) * DEG;
   }
+}
+
+/**
+ * Rots to a skeleton: skin to rotting flesh, then bones; clothes, belts and hair rot away.
+ * Armour, helmets, weapons and shields are left lying with the bones.
+ */
+export function humanoidDecay(p: UnitParams): DecayRecipe {
+  return { flesh: [p.skin], rotted: 'rotSkin', bare: 'bone', thin: 0.5, keep: [...METAL_RAMPS, 'wood', 'bone', 'dark'], soft: { rot: 'hair', bare: 'hide' } };
 }
 
 export function disposeHumanoid(unit: Humanoid): void {

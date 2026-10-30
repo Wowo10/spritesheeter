@@ -1,4 +1,4 @@
-import { PALETTE, type RGB } from '../render/palette';
+import { PALETTE, teamPalette, type RGB, type TeamColor } from '../render/palette';
 import type { Sheet } from './packer';
 import { indexedToRgba } from './packer';
 import { indexedPng, teamMaskPng } from './png';
@@ -40,4 +40,23 @@ export function downloadBinary(data: BlobPart, filename: string, type = 'applica
 
 export function downloadJson(data: unknown, filename: string): void {
   saveBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), filename);
+}
+
+type Image = Pick<Sheet, 'width' | 'height' | 'data'>;
+
+/** JSON fields about the image files: always indexed, plus the team mask when it's written. */
+export function imageFields(name: string, teamMask: boolean): { imageFormat: 'indexed'; teamMask?: string } {
+  return { imageFormat: 'indexed', ...(teamMask ? { teamMask: `${name}-team-mask.png` } : {}) };
+}
+
+/**
+ * An image in one team's colours as `<name>-<team>.png`, its team mask if asked for, and
+ * `<name>.json`: `meta`, the image's fields, then `extra`. Staggered so browsers accept them.
+ */
+export function downloadImage(image: Image, name: string, team: TeamColor, teamMask: boolean, meta: object, extra: object = {}): void {
+  const file = `${name}-${team}.png`;
+  const fields = imageFields(name, teamMask);
+  void downloadPng(image, file, teamPalette(team));
+  if (fields.teamMask) setTimeout(() => void downloadTeamMask(image, fields.teamMask!), 250);
+  downloadJson({ ...meta, image: file, imageTeam: team, ...fields, ...extra }, `${name}.json`);
 }

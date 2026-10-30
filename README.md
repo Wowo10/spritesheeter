@@ -1,5 +1,8 @@
 # ssheet
 
+[![build](https://github.com/Wowo10/spritesheeter/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/Wowo10/spritesheeter/actions/workflows/build.yml)
+[![tests](https://github.com/Wowo10/spritesheeter/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/Wowo10/spritesheeter/actions/workflows/test.yml)
+
 A browser tool that renders retro, 90s-RTS-style unit sprite sheets from 3D. It builds a procedural humanoid, or loads your own model, poses it through a set of animations, and renders every frame from 5 directions. The frames are downsampled into crisp pixel art on a fixed palette with team colours. You export a PNG sheet and a JSON atlas that your game can read.
 
 ## Quick start
@@ -16,6 +19,7 @@ Other scripts:
 | `npm run build` | Type-checks and builds a static site into `dist/` |
 | `npm run preview` | Serves the built `dist/` |
 | `npm test` | Runs the unit tests (Vitest) |
+| `npm run insert_g_secret -- G-XXXXXXXXXX` | After `build`, writes your Google Analytics ID into `dist/index.html` in place of the `__G_ANA_SECRET__` placeholder. Without it the placeholder stays and analytics is off. |
 
 ## The interface
 
@@ -272,6 +276,9 @@ In short, columns are the directions `N, NE, E, SE, S`, and the west-facing ones
 ```
 src/
   main.ts              app wiring, GUI, export actions
+  share.ts             share links: settings to and from the URL
+  history.ts           undo / redo
+  rng.ts               seeded random numbers
   unit/                procedural humanoid, beast, mounted unit, vehicle and building: parameters, presets, body parts
   anim/                humanoid, beast, mounted and vehicle poses, animation definitions
   custom/              loading and posing imported models
@@ -281,6 +288,7 @@ src/
   ui/                  3D preview, direction preview, panel splitter
   playground/          the RTS test field: sheet slicing, props, units fighting and gathering
 test/                  Vitest tests
+scripts/               build helpers (Google Analytics ID insertion)
 ```
 
 Built with [three.js](https://threejs.org/), [lil-gui](https://lil-gui.georgealways.com/), TypeScript and Vite.

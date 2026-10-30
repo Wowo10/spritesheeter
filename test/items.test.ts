@@ -2,7 +2,7 @@ import { Box3, Mesh, type Object3D } from 'three';
 import { describe, expect, it } from 'vitest';
 import { MaterialLibrary } from '../src/render/materials';
 import { buildHumanoid, disposeHumanoid } from '../src/unit/humanoid';
-import { BEARDS, EAR_STYLES, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, TEETH, type Hand, type HandItem, type UnitParams } from '../src/unit/params';
+import { BEARDS, EAR_STYLES, FACES, HAIR_STYLES, HAND_ITEMS, handItems, HELMETS, PRESETS, TEETH, type Hand, type HandItem, type UnitParams } from '../src/unit/params';
 
 const mats = new MaterialLibrary();
 
@@ -87,16 +87,43 @@ describe('robe', () => {
 });
 
 describe('face', () => {
-  it('an eyepatch adds to the head under every helmet', () => {
-    const count = (p: UnitParams) => {
-      const u = buildHumanoid(p, mats);
-      const n = meshesIn(u.joints.head);
-      disposeHumanoid(u);
-      return n;
-    };
+  const count = (p: Partial<UnitParams>) => {
+    const u = buildHumanoid({ ...PRESETS.pirate, ...p }, mats);
+    const n = meshesIn(u.joints.head);
+    disposeHumanoid(u);
+    return n;
+  };
+  const faces = FACES.filter((f) => f !== 'none');
+
+  it('every face adds to a bare head', () => {
+    for (const face of faces) expect(count({ helmet: 'none', beard: 'none', face }), face).toBeGreaterThan(count({ helmet: 'none', beard: 'none', face: 'none' }));
+  });
+
+  it('an eyepatch and a third eye add to the head under every helmet', () => {
     for (const helmet of HELMETS) {
-      expect(count({ ...PRESETS.pirate, helmet, face: 'eyepatch' }), helmet).toBeGreaterThan(count({ ...PRESETS.pirate, helmet, face: 'none' }));
+      for (const face of ['eyepatch', 'thirdEye'] as const) {
+        expect(count({ helmet, face }), `${face} ${helmet}`).toBeGreaterThan(count({ helmet, face: 'none' }));
+      }
     }
+  });
+
+  it('a full helm or mask hides the rest', () => {
+    for (const helmet of ['full', 'plagueMask'] as const) {
+      for (const face of faces.filter((f) => f !== 'eyepatch' && f !== 'thirdEye')) {
+        expect(count({ helmet, face }), `${face} ${helmet}`).toBe(count({ helmet, face: 'none' }));
+      }
+    }
+  });
+
+  it('a hood hides the earrings', () => {
+    expect(count({ helmet: 'hood', face: 'earrings' })).toBe(count({ helmet: 'hood', face: 'none' }));
+  });
+
+  it("a bandit's cloth hides the moustache and tusks, but a long beard hangs out below it", () => {
+    const bandit = count({ helmet: 'none', face: 'bandit', beard: 'none', teeth: 'none' });
+    expect(count({ helmet: 'none', face: 'bandit', beard: 'moustache', teeth: 'none' })).toBe(bandit);
+    expect(count({ helmet: 'none', face: 'bandit', beard: 'none', teeth: 'tusks' })).toBe(bandit);
+    expect(count({ helmet: 'none', face: 'bandit', beard: 'long', teeth: 'none' })).toBeGreaterThan(bandit);
   });
 });
 

@@ -12,6 +12,7 @@ import {
   QuadraticBezierCurve3,
   Shape,
   SphereGeometry,
+  TorusGeometry,
   TubeGeometry,
   Vector3,
 } from 'three';
@@ -184,9 +185,10 @@ const earsCovered = (h: Helmet) => faceCovered(h) || h === 'hood';
 /**
  * Ears, beard, teeth and face accessory, built after the headgear. Ears and beards are soft,
  * so they rot away with the hair; tusks and fangs stay with the skull. Under a full helm or a
- * mask only a beard's hang below the chin shows. The eyepatch sits over the left eye (+X),
- * standing out far enough to cover a glowing eye, its strap a thin slab through the head that
- * shows as a line where it crosses the faces.
+ * mask (or a bandit's cloth) only a beard's hang below the chin shows. The eyepatch sits over
+ * the left eye (+X), standing out far enough to cover a glowing eye, its strap a thin slab
+ * through the head that shows as a line where it crosses the faces. Only it and the third eye
+ * show on a covered face; the third eye glows on whatever covers the brow.
  */
 export function buildFace(b: PartBuilder, head: Object3D, fit: HeadFit, p: UnitParams): void {
   const s = fit.size;
@@ -206,7 +208,8 @@ export function buildFace(b: PartBuilder, head: Object3D, fit: HeadFit, p: UnitP
     }
   }
 
-  const covered = faceCovered(p.helmet);
+  // a bandit's cloth hides the mouth and jaw too
+  const covered = faceCovered(p.helmet) || p.face === 'bandit';
   const beard = (size: V3, pos: V3, rotDeg?: V3) => markSoft(b.box(head, p.hair, size, pos, rotDeg));
   const moustache = () => {
     beard([s * 0.56, s * 0.11, s * 0.1], [0, cy - s * 0.2, s * 0.53]);
@@ -250,9 +253,101 @@ export function buildFace(b: PartBuilder, head: Object3D, fit: HeadFit, p: UnitP
   }
 
   if (p.face === 'eyepatch') {
-    b.box(head, 'dark', [s * 0.26, s * 0.22, 0.03], [s * 0.22, cy + s * 0.05, s / 2 + 0.025]);
+    b.box(head, 'dark', [s * 0.26, s * 0.22, 0.03], [s * EYE_X, cy + s * EYE_Y, s / 2 + 0.025]);
     // rising from the patch across the forehead to above the other ear
     b.box(head, 'dark', [s * 1.04, s * 0.06, s * 1.04], [0, cy + s * 0.13, 0], [0, 0, -20]);
+  } else if (p.face === 'thirdEye') {
+    // a diamond on the brow, on top of whatever covers it
+    b.box(head, p.magic, [s * 0.18, s * 0.18, 0.03], [0, cy + s * 0.2, browDepth(p, s) + 0.015], [0, 0, 45]);
+  } else if (!faceCovered(p.helmet)) {
+    buildFaceWear(b, head, fit, p);
+  }
+}
+
+/** Where the eyes sit on the head box (as the glowing eyes do), as fractions of its size. */
+const EYE_X = 0.22;
+const EYE_Y = 0.05;
+
+/**
+ * Face accessories hidden by a full helm or mask. Rings are gold or dark so they keep their
+ * pixel against any skin; the monocle sits over the right eye (-X), the scar across the left.
+ */
+function buildFaceWear(b: PartBuilder, head: Object3D, fit: HeadFit, p: UnitParams): void {
+  const s = fit.size;
+  const cy = fit.centerY;
+  const eyeX = s * EYE_X;
+  const eyeY = cy + s * EYE_Y;
+  // in front of a glowing eye, so it frames or covers it
+  const glass = s / 2 + 0.03;
+  // a ring facing +Z, thick enough to keep its pixel
+  const ring = (ramp: RampName, r: number, pos: V3, rotDeg?: V3) => b.mesh(head, new TorusGeometry(r, s * 0.06, 4, 10), ramp, pos, rotDeg);
+  switch (p.face) {
+    case 'monocle':
+      ring('gold', s * 0.16, [-eyeX, eyeY, glass]);
+      b.box(head, 'gold', [s * 0.04, s * 0.5, s * 0.04], [-eyeX - s * 0.05, eyeY - s * 0.4, glass], [0, 0, -25]); // chain
+      break;
+    case 'spectacles':
+      for (const side of [1, -1]) {
+        ring('dark', s * 0.15, [side * eyeX, eyeY, glass]);
+        b.box(head, 'dark', [s * 0.14, s * 0.05, s * 0.05], [side * s * 0.45, eyeY, glass]); // hinge
+        b.box(head, 'dark', [s * 0.05, s * 0.05, s * 0.55], [side * s * 0.52, eyeY, s * 0.24]); // arm
+      }
+      b.box(head, 'dark', [s * 0.16, s * 0.06, s * 0.06], [0, eyeY + s * 0.03, glass]); // bridge
+      break;
+    case 'goggles':
+      for (const side of [1, -1]) {
+        b.cylinder(head, 'bronze', s * 0.18, s * 0.14, [side * s * 0.24, eyeY, s / 2 + s * 0.07], [90, 0, 0]);
+        // glass, lit when the eyes behind it glow
+        b.cylinder(head, p.glowEyes ? p.magic : 'ghost', s * 0.12, 0.02, [side * s * 0.24, eyeY, s / 2 + s * 0.14 + 0.005], [90, 0, 0]);
+      }
+      b.box(head, 'leather', [s * 1.04, s * 0.14, s * 1.04], [0, eyeY, 0]); // strap
+      break;
+    case 'blindfold': {
+      const back = -(s / 2 + 0.04);
+      b.box(head, p.cloth, [s * 1.06, s * 0.26, s + 0.08], [0, eyeY, 0]);
+      // knotted at the back, the ends hanging, like the bandana's
+      b.box(head, p.cloth, [s * 0.22, s * 0.2, s * 0.16], [0, eyeY, back - s * 0.06]);
+      for (const side of [1, -1]) b.box(head, p.cloth, [s * 0.13, s * 0.4, s * 0.05], [side * s * 0.09, eyeY - s * 0.24, back - s * 0.08], [0, 0, side * 15]);
+      break;
+    }
+    case 'bandit':
+      // from just under the eyes to the chin, a flap hanging below it in front
+      b.box(head, p.cloth, [s * 1.08, s * 0.48, s * 1.08], [0, cy - s * 0.26, 0]);
+      b.box(head, p.cloth, [s * 0.44, s * 0.44, s * 0.06], [0, cy - s * 0.5, s * 0.5], [0, 0, 45]);
+      break;
+    case 'scar':
+      // behind a glowing eye, so the eye still shows through it
+      b.box(head, 'red', [s * 0.18, s * 0.7, 0.02], [eyeX, eyeY, s / 2 + 0.01], [0, 0, 25]);
+      break;
+    case 'warPaint':
+      for (const side of [1, -1]) b.box(head, p.cloth, [s * 0.2, s * 0.75, 0.02], [side * eyeX, cy - s * 0.02, s / 2 + 0.01]);
+      break;
+    case 'earrings':
+      // forward of where long hair hangs by the face
+      if (!earsCovered(p.helmet)) for (const side of [1, -1]) ring('gold', s * 0.11, [side * s * 0.56, cy - s * 0.25, s * 0.2], [0, 90, 0]);
+      break;
+  }
+}
+
+/** How far in front of the head's centre the brow's outermost covering sits, so a mark on it shows. */
+function browDepth(p: UnitParams, s: number): number {
+  switch (p.helmet) {
+    case 'cap':
+    case 'horned':
+    case 'viking':
+      return s * HELM_RADIUS;
+    case 'full':
+    case 'plagueMask':
+      return s * 0.57;
+    case 'featherCap':
+      return s * 0.56;
+    case 'bandana':
+      return s * 0.54;
+    case 'none':
+      // an afro puffs out over the forehead
+      return p.hairStyle === 'afro' ? s * 0.64 : s / 2;
+    default:
+      return s / 2;
   }
 }
 

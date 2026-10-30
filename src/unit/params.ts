@@ -17,8 +17,12 @@ export const HELMETS = [
   'plagueMask',
   'chefHat',
 ] as const;
-/** Worn on the face, under or over any headgear. */
-export const FACES = ['none', 'eyepatch'] as const;
+/**
+ * Worn on the face, under or over any headgear; a full helm or a mask hides all but the eyepatch
+ * and third eye. bandit: a cloth over the nose and mouth; warPaint: stripes down through the eyes
+ * in the cloth colour; thirdEye: a glowing eye on the brow, in the magic colour.
+ */
+export const FACES = ['none', 'eyepatch', 'monocle', 'spectacles', 'goggles', 'blindfold', 'bandit', 'scar', 'warPaint', 'earrings', 'thirdEye'] as const;
 /** In the hair colour; a full helm or a mask leaves only what hangs below the chin. */
 export const BEARDS = ['none', 'moustache', 'goatee', 'full', 'long'] as const;
 /** tusks: up from the lower jaw, orc-style; fangs: down from the upper lip. */
@@ -460,10 +464,10 @@ export const PRESETS: Record<string, UnitParams> = {
   monk: { ...BASE, bulk: 0.95, helmet: 'none', armor: 'robe', rightHand: 'crook', leftHand: 'none', hairStyle: 'bald', magic: 'holy' },
   crossbowman: { ...BASE, helmet: 'cap', armor: 'chain', rightHand: 'crossbow', leftHand: 'none' },
   champion: { ...BASE, bulk: 1.15, helmet: 'full', armor: 'plate', rightHand: 'greatsword', leftHand: 'none', cape: 'broad' },
-  crusher: { ...BASE, teeth: 'tusks', ears: 'pointed', bulk: 1.3, headSize: 1.1, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'maul', leftHand: 'none', skin: 'greenSkin' },
+  crusher: { ...BASE, face: 'warPaint', teeth: 'tusks', ears: 'pointed', bulk: 1.3, headSize: 1.1, helmet: 'none', hairStyle: 'mohawk', armor: 'leather', rightHand: 'maul', leftHand: 'none', skin: 'greenSkin' },
   skirmisher: { ...BASE, bulk: 0.9, helmet: 'cap', armor: 'leather', rightHand: 'javelin', leftHand: 'roundShield' },
-  bomber: { ...BASE, helmet: 'bandana', armor: 'none', rightHand: 'bomb', leftHand: 'none', hairStyle: 'short', hair: 'dark' },
-  buccaneer: { ...BASE, beard: 'moustache', bulk: 0.95, helmet: 'tricorn', armor: 'none', rightHand: 'pistol', leftHand: 'sabre', hairStyle: 'long', hair: 'dark' },
+  bomber: { ...BASE, face: 'goggles', helmet: 'bandana', armor: 'none', rightHand: 'bomb', leftHand: 'none', hairStyle: 'short', hair: 'dark' },
+  buccaneer: { ...BASE, face: 'earrings', beard: 'moustache', bulk: 0.95, helmet: 'tricorn', armor: 'none', rightHand: 'pistol', leftHand: 'sabre', hairStyle: 'long', hair: 'dark' },
   musketeer: { ...BASE, helmet: 'featherCap', armor: 'chain', rightHand: 'musket', leftHand: 'none', cape: 'long' },
 };
 
@@ -490,6 +494,8 @@ const SIDEARMS = HAND_ITEMS.filter((i) => itemKind(i) === 'chop' && i !== 'sickl
 /** The skins random units were first drawn from; the later ones are drawn last, so every seed keeps its other fields. */
 const FIRST_SKINS: RampName[] = ['skin', 'greenSkin', 'paleSkin'];
 const LATER_SKINS = SKIN_RAMPS.filter((r) => !FIRST_SKINS.includes(r));
+/** Faces added after the eyepatch; the blindfold and third eye are kept for special units. */
+const RANDOM_FACES: Face[] = ['monocle', 'spectacles', 'goggles', 'bandit', 'scar', 'warPaint', 'earrings'];
 
 export function randomUnit(seed: number): UnitParams {
   const rng = mulberry32(seed);
@@ -557,6 +563,8 @@ export function randomUnit(seed: number): UnitParams {
   for (const h of ['rightHand', 'leftHand'] as const) if (itemKind(unit[h]) === 'chop' && unit[h] !== 'torch' && rng() < 0.06) unit[h] = 'sickle';
   // a scythe now takes both hands (handItems already ignored the other)
   if (unit.rightHand === 'scythe') unit.leftHand = 'none';
+  // the later faces, after that
+  if (unit.face === 'none' && rng() < 0.12) unit.face = pick(rng, RANDOM_FACES);
   return unit;
 }
 

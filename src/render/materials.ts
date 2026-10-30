@@ -2,14 +2,14 @@ import { ShaderMaterial, Vector3 } from 'three';
 import { rampIndex, rampRgb, type RampName, type RGB } from './palette';
 
 /**
- * One shader serves three passes, switched globally through a shared uniform:
+ * One shader serves two passes, switched globally through a shared uniform:
  * - PREVIEW: lit and posterised straight to the ramp colours (what the 3D view shows);
- * - LIGHT:   light intensity in the red channel, used to pick the shade per sprite pixel;
- * - ID:      ramp id in the red channel, used to pick the ramp per sprite pixel.
+ * - SPRITE:  ramp id in the red channel, to pick the ramp per sprite pixel, and light intensity
+ *            in the green channel, to pick its shade.
  * Lighting is in view space, so every sprite direction is lit the same way.
  * The preview also dithers by uOpacity, like the sprites; the sprite passes leave that to postprocessing.
  */
-export const ShadeMode = { Preview: 0, Light: 1, Id: 2 } as const;
+export const ShadeMode = { Preview: 0, Sprite: 1 } as const;
 export type ShadeMode = (typeof ShadeMode)[keyof typeof ShadeMode];
 
 /** Ramps that glow: their light never drops below this, whichever way they face. */
@@ -92,10 +92,8 @@ const fragmentShader = /* glsl */ `
     vec3 n = normalize(vNormal);
     if (!gl_FrontFacing) n = -n;
     float light = clamp(uAmbient + uDiffuse * max(dot(n, uLightDir), 0.0) + uFill * max(n.z, 0.0), uMinLight, 1.0);
-    if (uMode > 1.5) {
-      gl_FragColor = vec4(uId / 255.0, 0.0, 0.0, 1.0);
-    } else if (uMode > 0.5) {
-      gl_FragColor = vec4(light, 0.0, 0.0, 1.0);
+    if (uMode > 0.5) {
+      gl_FragColor = vec4(uId / 255.0, light, 0.0, 1.0);
     } else {
       vec3 c = light < uThresholds.x ? uRamp[0]
              : light < uThresholds.y ? uRamp[1]

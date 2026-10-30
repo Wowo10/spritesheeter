@@ -19,14 +19,13 @@ export interface PostprocessSettings {
 }
 
 /**
- * Downscales the supersampled ID and light passes into one indexed frame.
- * Both buffers are RGBA8 straight from WebGL (bottom row first) of size (w*ss) x (h*ss).
+ * Downscales the supersampled sprite pass into one indexed frame. The buffer is RGBA8 straight
+ * from WebGL (bottom row first) of size (w*ss) x (h*ss): ramp id in red, light in green.
  * Each output pixel takes the ramp covering most of its block, and its shade from the
  * average light of just that ramp's samples, so colours never bleed between materials.
  */
 export function downscaleFrame(
-  idBuf: Uint8Array,
-  lightBuf: Uint8Array,
+  buf: Uint8Array,
   width: number,
   height: number,
   ss: number,
@@ -48,15 +47,15 @@ export function downscaleFrame(
       for (let dy = 0; dy < ss; dy++) {
         let i = ((sy0 + dy) * srcW + ox * ss) * 4;
         for (let dx = 0; dx < ss; dx++, i += 4) {
-          if (idBuf[i + 3] === 0) continue;
-          const ramp = Math.round(idBuf[i] / idStep) - 1;
+          if (buf[i + 3] === 0) continue;
+          const ramp = Math.round(buf[i] / idStep) - 1;
           if (ramp < 0) continue;
           covered++;
           const c = counts.get(ramp);
           if (c) {
             c.n++;
-            c.light += lightBuf[i];
-          } else counts.set(ramp, { n: 1, light: lightBuf[i] });
+            c.light += buf[i + 1];
+          } else counts.set(ramp, { n: 1, light: buf[i + 1] });
         }
       }
       if (covered < minCovered) continue;

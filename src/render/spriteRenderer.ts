@@ -47,8 +47,7 @@ const GLOW_RAMPS = MAGIC_RAMPS.map(rampIndex);
 export class SpriteRenderer {
   private readonly camera = new OrthographicCamera();
   private target: WebGLRenderTarget | null = null;
-  private idBuf = new Uint8Array(0);
-  private lightBuf = new Uint8Array(0);
+  private buf = new Uint8Array(0);
 
   constructor(
     private readonly renderer: WebGLRenderer,
@@ -136,12 +135,12 @@ export class SpriteRenderer {
     return frames;
   }
 
-  /** One frame of the subject as it's posed now: both passes, downscaled, dithered see-through. */
+  /** One frame of the subject as it's posed now: rendered, downscaled, dithered see-through. */
   private frame(opacity: number, i: number, ss: number, s: SpriteSettings): IndexedFrame {
     const size = s.frameSize * ss;
-    this.pass(ShadeMode.Id, this.idBuf, size);
-    this.pass(ShadeMode.Light, this.lightBuf, size);
-    const frame = downscaleFrame(this.idBuf, this.lightBuf, s.frameSize, s.frameSize, ss, ID_STEP, s);
+    this.renderer.render(this.scene, this.camera);
+    this.renderer.readRenderTargetPixels(this.target!, 0, 0, size, size, this.buf);
+    const frame = downscaleFrame(this.buf, s.frameSize, s.frameSize, ss, ID_STEP, s);
     // dithered after the outline, so the edge isn't drawn around every hole
     return dither(frame, opacity, i, GLOW_RAMPS);
   }
@@ -163,6 +162,7 @@ export class SpriteRenderer {
     hidden.forEach((c) => (c.visible = false));
     this.renderer.setRenderTarget(this.target);
     this.renderer.setClearColor(0x000000, 0);
+    this.mats.setMode(ShadeMode.Sprite);
     try {
       render();
     } finally {
@@ -175,19 +175,12 @@ export class SpriteRenderer {
     }
   }
 
-  private pass(mode: ShadeMode, buf: Uint8Array, size: number): void {
-    this.mats.setMode(mode);
-    this.renderer.render(this.scene, this.camera);
-    this.renderer.readRenderTargetPixels(this.target!, 0, 0, size, size, buf);
-  }
-
   private prepare(size: number): void {
     if (this.target?.width === size) return;
     this.target?.dispose();
     // no MSAA: ids must never be blended between neighbouring materials
     this.target = new WebGLRenderTarget(size, size, { samples: 0, depthBuffer: true });
-    this.idBuf = new Uint8Array(size * size * 4);
-    this.lightBuf = new Uint8Array(size * size * 4);
+    this.buf = new Uint8Array(size * size * 4);
   }
 
   dispose(): void {

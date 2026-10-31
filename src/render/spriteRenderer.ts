@@ -2,7 +2,7 @@ import { Color, type Object3D, OrthographicCamera, Scene, WebGLRenderer, WebGLRe
 import { DEFAULT_LIGHTING, ID_STEP, ShadeMode, type MaterialLibrary } from './materials';
 import { MAGIC_RAMPS, rampIndex } from './palette';
 import { portraitFocus, type PortraitHead, type PortraitSettings } from './portrait';
-import { MAX_SUPERSAMPLE, sampleFrame, shadeFrame, type FrameSamples, type IndexedFrame, type PostprocessSettings } from './postprocess';
+import { MAX_SUPERSAMPLE, sampleFrame, shadeFrame, shadeStages, type FrameSamples, type IndexedFrame, type PostprocessSettings, type ShadeStages } from './postprocess';
 
 /** Rendered directions; the west-facing ones are mirrored from their east twins. */
 export const DIRECTIONS = ['N', 'NE', 'E', 'SE', 'S'] as const;
@@ -49,6 +49,11 @@ export function shadeSprite(f: FrameSamples, s: PostprocessSettings): IndexedFra
   return shadeFrame(f, s, GLOW_RAMPS);
 }
 
+/** shadeSprite, keeping what each of its steps made. */
+export function shadeSpriteStages(f: FrameSamples, s: PostprocessSettings): ShadeStages {
+  return shadeStages(f, s, GLOW_RAMPS);
+}
+
 /** Every direction's rendered frames, shaded. */
 export function shadeSprites(byDir: Map<Direction, FrameSamples[]>, s: PostprocessSettings): Map<Direction, IndexedFrame[]> {
   return new Map([...byDir].map(([dir, frames]) => [dir, frames.map((f) => shadeSprite(f, s))]));
@@ -58,6 +63,11 @@ export class SpriteRenderer {
   private readonly camera = new OrthographicCamera();
   private target: WebGLRenderTarget | null = null;
   private buf = new Uint8Array(0);
+  /**
+   * Called with every frame's supersampled pass as it's gathered, for the diagnostics. The
+   * buffer is reused by the next frame, so copy what's kept.
+   */
+  onRawFrame: ((f: FrameSamples, buf: Uint8Array) => void) | null = null;
 
   constructor(
     private readonly renderer: WebGLRenderer,
@@ -167,7 +177,9 @@ export class SpriteRenderer {
     const size = s.frameSize * ss;
     this.renderer.render(this.scene, this.camera);
     this.renderer.readRenderTargetPixels(this.target!, 0, 0, size, size, this.buf);
-    return sampleFrame(this.buf, s.frameSize, s.frameSize, ss, ID_STEP, opacity, i);
+    const f = sampleFrame(this.buf, s.frameSize, s.frameSize, ss, ID_STEP, opacity, i);
+    this.onRawFrame?.(f, this.buf);
+    return f;
   }
 
   /**

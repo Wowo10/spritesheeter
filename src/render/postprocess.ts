@@ -41,7 +41,7 @@ export interface FrameSamples {
   phase: number;
 }
 
-const NO_RAMP = 255;
+export const NO_RAMP = 255;
 
 /** Supersampling up to which a block's sample counts fit their 8 bits. */
 export const MAX_SUPERSAMPLE = 15;
@@ -108,25 +108,45 @@ export function sampleFrame(buf: Uint8Array, width: number, height: number, ss: 
   return f;
 }
 
-/**
- * Shades gathered samples into an indexed frame: a pixel is opaque if enough of its block is
- * covered, and its shade comes from its ramp's average light. Then outlined, then dithered
- * see-through (after the outline, so the edge isn't drawn around every hole); `glow` ramps
- * fade slower, see dither.
- */
-export function shadeFrame(f: FrameSamples, settings: PostprocessSettings, glow: readonly number[] = []): IndexedFrame {
+/** Covered samples a block needs for its pixel to be opaque; always at least one. */
+export function minCovered(ss: number, coverage: number): number {
+  return Math.max(1, Math.round(ss * ss * coverage));
+}
+
+/** A pixel is opaque if enough of its block is covered, and its shade comes from its ramp's average light. */
+export function shadePixels(f: FrameSamples, settings: Pick<PostprocessSettings, 'coverage' | 'thresholds'>): IndexedFrame {
   const out = new Uint8Array(f.width * f.height);
-  const minCovered = Math.max(1, Math.round(f.ss * f.ss * settings.coverage));
+  const min = minCovered(f.ss, settings.coverage);
   const [t0, t1, t2] = settings.thresholds;
   for (let i = 0; i < out.length; i++) {
-    if (f.ramp[i] === NO_RAMP || f.covered[i] < minCovered) continue;
+    if (f.ramp[i] === NO_RAMP || f.covered[i] < min) continue;
     const light = f.light[i] / f.count[i] / 255;
     const shade = light < t0 ? 0 : light < t1 ? 1 : light < t2 ? 2 : 3;
     out[i] = paletteIndex(f.ramp[i], shade);
   }
-  const frame = { width: f.width, height: f.height, data: out };
-  const outlined = settings.outline === 'none' ? frame : outline(frame, settings.outline);
-  return dither(outlined, f.opacity, f.phase, glow);
+  return { width: f.width, height: f.height, data: out };
+}
+
+/** What shadeFrame makes of a frame after each of its steps; a step with nothing to do passes its frame on. */
+export interface ShadeStages {
+  shaded: IndexedFrame;
+  outlined: IndexedFrame;
+  final: IndexedFrame;
+}
+
+export function shadeStages(f: FrameSamples, settings: PostprocessSettings, glow: readonly number[] = []): ShadeStages {
+  const shaded = shadePixels(f, settings);
+  const outlined = settings.outline === 'none' ? shaded : outline(shaded, settings.outline);
+  return { shaded, outlined, final: dither(outlined, f.opacity, f.phase, glow) };
+}
+
+/**
+ * Shades gathered samples into an indexed frame (see shadePixels). Then outlined, then dithered
+ * see-through (after the outline, so the edge isn't drawn around every hole); `glow` ramps
+ * fade slower, see dither.
+ */
+export function shadeFrame(f: FrameSamples, settings: PostprocessSettings, glow: readonly number[] = []): IndexedFrame {
+  return shadeStages(f, settings, glow).final;
 }
 
 /** Downscales the supersampled sprite pass (see sampleFrame) straight into an opaque indexed frame. */

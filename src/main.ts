@@ -27,6 +27,7 @@ import { CompassPreview, StripPreview } from './ui/spritePreview';
 import { beastControllers, buildingControllers, humanoidControllers, presetOf, rememberOpen, restoreOpen, vehicleControllers } from './ui/controls';
 import { showDesktopNotice } from './ui/desktopNotice';
 import { initSplitter } from './ui/splitter';
+import type { DiagnosticsPanel } from './ui/diagnosticsPanel';
 import './style.css';
 
 /** One-shot animations hold their last frame this long (in frames) before replaying. */
@@ -227,6 +228,8 @@ let playables: Playable[] = [];
 let sampled: SampledAnimation[] = [];
 let rendered: AnimationFrames[] = [];
 let sheet: Sheet | null = null;
+/** The post-processing diagnostics, in development with ?diag only. */
+let diagnostics: DiagnosticsPanel | null = null;
 
 function rebuild(): void {
   subject?.dispose();
@@ -321,7 +324,13 @@ async function renderAll(id: number): Promise<void> {
   const order = [preview, ...rows.keys()].filter((i, k, all) => all.indexOf(i) === k);
   for (const [k, i] of order.entries()) {
     const a = rows[i];
+    // the diagnostics keep the previewed row's supersampled passes, and only its: every row's would take too much memory
+    const keep = diagnostics && a.name === state.previewAnim;
+    if (keep) diagnostics!.beginCapture();
+    sprites.onRawFrame = keep ? diagnostics!.keepRaw : null;
     const frames = await sprites.renderFrames(root, a.frames, (f) => a.apply(frameTime(a, f)), state.sprite, goOn);
+    // a newer render that took over meanwhile has set its own
+    if (id === renderId) sprites.onRawFrame = null;
     if (!frames) return;
     done[i] = { name: a.name, fps: a.fps, loop: a.loop, hold: a.hold, frames };
     if (k === 0 && a.name === state.previewAnim) compass.setFrames(shadeSprites(done[i].frames, state.sprite), teamPalette(state.team));
@@ -462,6 +471,7 @@ function fitPreviews(): void {
   // the side panel's and each preview panel's horizontal padding
   const avail = side.clientWidth - 2 * 12 - 2 * 10;
   compass.fitWidth(avail);
+  diagnostics?.fitWidth(avail);
   portraitPreview.fitWidth(avail);
   // sheets wider than the panel (big frames) are shown scaled down
   for (const [s, canvas] of [[sheet, sheetCanvas], [effectsSheet, effectsCanvas]] as const) {
@@ -474,6 +484,7 @@ function showPreviewAnim(): void {
   if (r) compass.setFrames(r.frames, teamPalette(state.team));
   else compass.setFrames(new Map(), teamPalette(state.team));
   document.getElementById('animLabel')!.textContent = r ? state.previewAnim : `${state.previewAnim} — not in this sheet`;
+  diagnostics?.update();
 }
 
 /** What settings changed since the last frame call for: rendering it all again, or just shading it. */
@@ -1062,6 +1073,23 @@ window.addEventListener('drop', (e) => {
   e.preventDefault();
   openFiles([...(e.dataTransfer?.files ?? [])], 'auto');
 });
+
+// --- diagnostics -------------------------------------------------------------
+
+// development only, so a production build leaves the panel out altogether
+if (import.meta.env.DEV && new URLSearchParams(location.search).has('diag')) {
+  void import('./ui/diagnosticsPanel').then(({ DiagnosticsPanel }) => {
+    diagnostics = new DiagnosticsPanel(gui, side, {
+      row: () => sampled.find((a) => a.name === state.previewAnim),
+      settings: () => state.sprite,
+      palette: () => teamPalette(state.team),
+      rerender: regenerate,
+    });
+    fitPreviews();
+    // the first render may be past the previewed row, its passes gone
+    regenerate();
+  });
+}
 
 // --- main loop --------------------------------------------------------------
 

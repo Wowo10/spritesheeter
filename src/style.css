@@ -21,7 +21,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .panel { background: var(--panel); border-radius: 6px; padding: 10px; }
 .panel h2 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
 .panel h2 span { color: var(--muted); font-weight: 400; margin-left: 6px; }
-#compass, #portrait, .sheetWrap canvas {
+#compass, #portrait, .sheetWrap canvas, .diagGrid canvas {
   image-rendering: pixelated;
   background-color: var(--checker-a);
   background-image:
@@ -31,6 +31,13 @@ body.resizing { cursor: col-resize; user-select: none; }
   background-position: 0 0, 8px 8px;
 }
 .sheetWrap { overflow: auto; max-height: 60vh; }
+/* dev-only post-processing diagnostics (?diag) */
+.diagGrid { display: grid; grid-template-columns: repeat(4, max-content); gap: 6px; }
+.diagGrid figure { margin: 0; }
+.diagGrid canvas { display: block; }
+/* captions wrap to their canvas instead of widening the column */
+.diagGrid figcaption { color: var(--muted); font-size: 11px; width: 0; min-width: 100%; overflow-wrap: anywhere; }
+.diagStats { margin: 8px 0 0; color: var(--muted); font-size: 11px; white-space: pre-wrap; }
 .lil-gui.root { position: absolute; top: 8px; right: calc(var(--side-width) + 20px); }
 #view3d > .lil-gui.root { top: auto; right: auto; left: 8px; bottom: 8px; }
 /* several buttons side by side in one lil-gui row (undo / redo, ko-fi / github) */

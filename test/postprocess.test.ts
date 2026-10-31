@@ -1,22 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { OUTLINE_INDEX, paletteIndex, RAMP_NAMES, TEAM_INDICES } from '../src/render/palette';
-import { BEVEL_DARK, BEVEL_LIGHT, dither, downscaleFrame, framePortrait, mirrorFrame, outline, PORTRAIT_FILL, sampleFrame, shadeFrame, type IndexedFrame, type PostprocessSettings } from '../src/render/postprocess';
-import { mulberry32 } from '../src/rng';
-
-const STEP = 8;
-
-/** Builds a WebGL-style (bottom row first) sprite pass from top-down per-sample descriptions. */
-function pass(rows: ([ramp: number, light: number] | null)[][]): Uint8Array {
-  const h = rows.length;
-  const w = rows[0].length;
-  const buf = new Uint8Array(w * h * 4);
-  rows.forEach((row, y) =>
-    row.forEach((s, x) => {
-      if (s) buf.set([(s[0] + 1) * STEP, Math.round(s[1] * 255), 0, 255], ((h - 1 - y) * w + x) * 4);
-    }),
-  );
-  return buf;
-}
+import { OUTLINE_INDEX, paletteIndex, rampIndex, TEAM_INDICES } from '../src/render/palette';
+import {
+  BEVEL_DARK,
+  BEVEL_LIGHT,
+  dither,
+  downscaleFrame,
+  framePortrait,
+  minCovered,
+  mirrorFrame,
+  outline,
+  PORTRAIT_FILL,
+  sampleFrame,
+  shadeFrame,
+  shadePixels,
+  shadeStages,
+  type IndexedFrame,
+  type PostprocessSettings,
+} from '../src/render/postprocess';
+import { art, barPass, frameOf, pass, ramps, randomPass, shades, STEP } from './passes';
 
 /** The first, straightforward downscale, kept to check faster ones against. */
 function referenceDownscale(buf: Uint8Array, width: number, height: number, ss: number, settings: PostprocessSettings): IndexedFrame {
@@ -61,24 +62,6 @@ function referenceDownscale(buf: Uint8Array, width: number, height: number, ss: 
   }
   const frame = { width, height, data: out };
   return settings.outline === 'none' ? frame : outline(frame, settings.outline);
-}
-
-/** A noisy blob of a few ramps in patches, with gradients of light and ragged, part-covered edges. */
-function randomPass(size: number, ss: number, seed: number): Uint8Array {
-  const rng = mulberry32(seed);
-  const n = size * ss;
-  const buf = new Uint8Array(n * n * 4);
-  const ramps = Array.from({ length: 5 }, () => Math.floor(rng() * RAMP_NAMES.length));
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
-      const dx = x - n / 2;
-      const dy = y - n / 2;
-      if (Math.hypot(dx, dy) > n * (0.3 + 0.1 * rng())) continue;
-      const ramp = ramps[(Math.floor(x / (ss * 1.5)) + Math.floor(y / ss) + (rng() < 0.2 ? 1 : 0)) % ramps.length];
-      buf.set([(ramp + 1) * STEP, Math.floor((x / n) * 200 + rng() * 55), 0, 255], (y * n + x) * 4);
-    }
-  }
-  return buf;
 }
 
 const settings = { coverage: 0.5, thresholds: [0.25, 0.5, 0.75] as [number, number, number], outline: 'none' as const };
@@ -197,5 +180,177 @@ describe('framePortrait', () => {
   it('leaves the frame it was given alone', () => {
     framePortrait(frame, 'dark', true);
     expect(frame.data[0]).toBe(0);
+  });
+});
+
+describe('shadeStages', () => {
+  const buf = randomPass(16, 4, 21);
+  const s: PostprocessSettings = { coverage: 0.3, thresholds: [0.4, 0.62, 0.86], outline: 'outer' };
+
+  it('ends in what shadeFrame makes, for every outline', () => {
+    const f = sampleFrame(buf, 16, 16, 4, STEP, 0.5, 1);
+    for (const o of ['none', 'inner', 'outer'] as const) {
+      expect(shadeStages(f, { ...s, outline: o }, [2]).final.data).toEqual(shadeFrame(f, { ...s, outline: o }, [2]).data);
+    }
+  });
+
+  it('shades, then outlines, then dithers', () => {
+    const f = sampleFrame(buf, 16, 16, 4, STEP, 0.5, 1);
+    const st = shadeStages(f, s);
+    expect(st.shaded.data).toEqual(shadePixels(f, s).data);
+    expect(st.outlined.data).toEqual(outline(st.shaded, 'outer').data);
+    expect(st.final.data).toEqual(dither(st.outlined, 0.5, 1).data);
+  });
+
+  it('passes a frame on through a step with nothing to do', () => {
+    const st = shadeStages(sampleFrame(buf, 16, 16, 4, STEP), { ...s, outline: 'none' });
+    expect(st.outlined).toBe(st.shaded);
+    expect(st.final).toBe(st.outlined);
+  });
+});
+
+/** FNV-1a of a frame's pixels: enough to tell whether a frame came out exactly the same. */
+function fnv1a(data: Uint8Array): string {
+  let h = 0x811c9dc5;
+  for (const v of data) h = Math.imul(h ^ v, 0x01000193) >>> 0;
+  return h.toString(16).padStart(8, '0');
+}
+
+describe('outer outline (the baseline to keep)', () => {
+  // [size, supersample, seed, opacity, phase, hash], from the pipeline as it was before any
+  // quality work; a change here changes what sheets with the outer outline look like
+  const GOLDEN: [number, number, number, number, number, string][] = [
+    [16, 4, 1, 1, 0, '664f9a35'],
+    [16, 8, 2, 1, 0, '88d11743'],
+    [32, 8, 3, 1, 0, 'a916e9de'],
+    [32, 12, 4, 1, 0, 'bc93f3ff'],
+    [32, 8, 5, 0.5, 2, 'b6fe5376'],
+    [24, 8, 6, 0.25, 1, '70a568e8'],
+  ];
+  it.each(GOLDEN)('shades a %ipx frame at %ix (seed %i, opacity %f, phase %i) exactly as before', (size, ss, seed, opacity, phase, hash) => {
+    const s: PostprocessSettings = { coverage: 0.3, thresholds: [0.4, 0.62, 0.86], outline: 'outer' };
+    expect(fnv1a(shadeFrame(sampleFrame(randomPass(size, ss, seed), size, size, ss, STEP, opacity, phase), s, [3]).data)).toBe(hash);
+  });
+
+  const square = ['......', '......', '..AA..', '..AA..', '......', '......'];
+
+  it('rings a part through its 4 neighbours, leaving the corners open', () => {
+    expect(ramps(outline(frameOf(square), 'outer'))).toEqual(['......', '..##..', '.#AA#.', '.#AA#.', '..##..', '......']);
+  });
+
+  it('thickens a diagonal line into a staircase, and draws nothing past the frame edge', () => {
+    expect(ramps(outline(frameOf(['A...', '.A..', '..A.', '...A']), 'outer'))).toEqual(['A#..', '#A#.', '.#A#', '..#A']);
+  });
+
+  it('fills a 1 px gap between two parts', () => {
+    expect(ramps(outline(frameOf(['A.A', 'A.A']), 'outer'))).toEqual(['A#A', 'A#A']);
+  });
+
+  it('is the same dark around every ramp, the team ramp too', () => {
+    expect(rampIndex('team')).toBe(0);
+    const d = outline(frameOf(['.A.']), 'outer').data;
+    expect([d[0], d[2]]).toEqual([OUTLINE_INDEX, OUTLINE_INDEX]);
+    expect(TEAM_INDICES).not.toContain(OUTLINE_INDEX);
+  });
+
+  it('turns one pixel of change in the silhouette into three changed pixels', () => {
+    const a = outline(frameOf(square), 'outer');
+    const b = outline(frameOf(['......', '......', '..AAA.', '..AA..', '......', '......']), 'outer');
+    expect(a.data.filter((v, i) => v !== b.data[i]).length).toBe(3);
+  });
+
+  it('is dithered along with the sprite, so a see-through unit has gaps in its outline', () => {
+    const f = outline(frameOf(['....', '.AA.', '.AA.', '....']), 'outer');
+    const count = (g: IndexedFrame) => g.data.filter((v) => v === OUTLINE_INDEX).length;
+    expect(count(dither(f, 0.5, 0))).toBeLessThan(count(f));
+  });
+});
+
+describe('inner outline', () => {
+  it('keeps its own shade only where a part is 3 px or more across', () => {
+    expect(shades(outline(frameOf(['.....', '.AAA.', '.AAA.', '.AAA.', '.....']), 'inner'))).toEqual(['.....', '.000.', '.030.', '.000.', '.....']);
+  });
+
+  it('leaves nothing of a 2 px wide part but its darkest shade', () => {
+    expect(shades(outline(frameOf(['.AA.', '.AA.', '.AA.']), 'inner'))).toEqual(['.00.', '.00.', '.00.']);
+  });
+});
+
+describe('coverage threshold', () => {
+  it('needs round(ss² × coverage) covered samples, never fewer than one', () => {
+    expect(minCovered(8, 0.3)).toBe(19);
+    expect(minCovered(8, 0.9)).toBe(58);
+    expect(minCovered(4, 0.5)).toBe(8);
+    expect(minCovered(8, 0)).toBe(1);
+  });
+
+  it('drops a block one sample short of it', () => {
+    // the first n samples of an 8x8 block, in reading order
+    const block = (n: number) => pass(Array.from({ length: 8 }, (_, y) => Array.from({ length: 8 }, (_, x) => (y * 8 + x < n ? ([2, 0.9] as [number, number]) : null))));
+    const s = { ...settings, coverage: 0.3 };
+    expect(downscaleFrame(block(18), 1, 1, 8, STEP, s).data[0]).toBe(0);
+    expect(downscaleFrame(block(19), 1, 1, 8, STEP, s).data[0]).toBe(paletteIndex(2, 3));
+  });
+
+  it('counts every ramp toward coverage, but colours and lights the pixel from the largest alone', () => {
+    // coverage 0.5 of 4x4 is 8 samples: 5 lit A and 4 dark B, neither enough alone
+    const f = downscaleFrame(art(['AAAA', 'Abbb', 'b...', '....']), 1, 1, 4, STEP, settings);
+    expect(f.data[0]).toBe(paletteIndex(0, 3));
+  });
+});
+
+describe('dominant ramp', () => {
+  it('breaks ties toward the samples read first: the bottom row of the block, then the left', () => {
+    expect(ramps(downscaleFrame(art(['AA', 'BB']), 1, 1, 2, STEP, settings))).toEqual(['B']);
+    expect(ramps(downscaleFrame(art(['AB', 'AB']), 1, 1, 2, STEP, settings))).toEqual(['A']);
+  });
+
+  it('so a west-facing render could differ from the mirrored east-facing one it is drawn as', () => {
+    expect(ramps(mirrorFrame(downscaleFrame(art(['AB', 'AB']), 1, 1, 2, STEP, settings)))).toEqual(['A']);
+    expect(ramps(downscaleFrame(art(['BA', 'BA']), 1, 1, 2, STEP, settings))).toEqual(['B']);
+  });
+
+  it('loses a thin line of another ramp that never has the most of a block', () => {
+    // a one-sample line of B down the second column of every 4x4 block
+    const f = downscaleFrame(art(Array(4).fill('ABAA'.repeat(4))), 4, 1, 4, STEP, settings);
+    expect(ramps(f)).toEqual(['AAAA']);
+  });
+});
+
+describe('known limitations: thin parts and sub-pixel motion', () => {
+  // A bar's drawn width in pixels at each of the 8 sub-pixel offsets of 8x supersampling: what
+  // a part that slides by less than a pixel from frame to frame comes out as. These record the
+  // current behaviour, which better downsampling is meant to change.
+  const widths = (widthSamples: number, coverage: number) =>
+    Array.from({ length: 8 }, (_, off) => downscaleFrame(barPass(6, 8, 16 + off, widthSamples), 6, 1, 8, STEP, { ...settings, coverage }).data.filter((v) => v !== 0).length);
+
+  it('draws a 1 px bar 1 or 2 px wide depending on where it falls between pixels', () => {
+    expect(widths(8, 0.3)).toEqual([1, 1, 1, 2, 2, 2, 1, 1]);
+  });
+
+  it('drops a bar half a pixel wide or less at some offsets, so it blinks as it moves', () => {
+    expect(widths(3, 0.3)).toEqual([1, 1, 1, 1, 1, 1, 0, 0]);
+    expect(widths(4, 0.5)).toEqual([1, 1, 1, 1, 1, 0, 0, 0]);
+  });
+});
+
+describe('dither', () => {
+  const solid = frameOf(Array(4).fill('BBBB'));
+
+  it('leaves a solid sprite alone', () => {
+    expect(dither(solid, 1, 0)).toBe(solid);
+  });
+
+  it('makes a checkerboard at half opacity, shifted a pixel per phase', () => {
+    expect(ramps(dither(solid, 0.5, 0))).toEqual(['B.B.', '.B.B', 'B.B.', '.B.B']);
+    expect(ramps(dither(solid, 0.5, 1))).toEqual(['.B.B', 'B.B.', '.B.B', 'B.B.']);
+  });
+
+  it('repeats every 4 phases, so a loop of other than 4 frames shimmers unevenly where it wraps', () => {
+    expect(dither(solid, 0.3, 4).data).toEqual(dither(solid, 0.3, 0).data);
+  });
+
+  it('keeps glowing ramps solid at half opacity', () => {
+    expect(ramps(dither(solid, 0.5, 0, [1]))).toEqual(Array(4).fill('BBBB'));
   });
 });

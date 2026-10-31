@@ -32,6 +32,7 @@ export const DEFAULT_SPRITE_SETTINGS: SpriteSettings = {
   coverage: 0.3,
   thresholds: DEFAULT_LIGHTING.thresholds,
   outline: 'inner',
+  downsample: 'classic',
 };
 
 export function anchorOf(s: Pick<SpriteSettings, 'frameSize' | 'anchorY'>): { x: number; y: number } {
@@ -42,7 +43,7 @@ export function anchorOf(s: Pick<SpriteSettings, 'frameSize' | 'anchorY'>): { x:
 const MAX_TARGET_SIZE = 2048;
 
 /** Glowing ramps stay more solid when a sprite is dithered see-through. */
-const GLOW_RAMPS = MAGIC_RAMPS.map(rampIndex);
+export const GLOW_RAMPS = MAGIC_RAMPS.map(rampIndex);
 
 /** A rendered sprite frame shaded with the given outline, coverage and thresholds. */
 export function shadeSprite(f: FrameSamples, s: PostprocessSettings): IndexedFrame {

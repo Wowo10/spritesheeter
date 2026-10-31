@@ -33,11 +33,15 @@ body.resizing { cursor: col-resize; user-select: none; }
 .sheetWrap { overflow: auto; max-height: 60vh; }
 /* dev-only post-processing diagnostics (?diag) */
 .diagGrid { display: grid; grid-template-columns: repeat(4, max-content); gap: 6px; }
+.diagGrid[hidden] { display: none; }
+/* the compare view on plain grounds, as a game would show it */
+.diagCompare.ground canvas { background: var(--ground); }
 .diagGrid figure { margin: 0; }
 .diagGrid canvas { display: block; }
 /* captions wrap to their canvas instead of widening the column */
 .diagGrid figcaption { color: var(--muted); font-size: 11px; width: 0; min-width: 100%; overflow-wrap: anywhere; }
-.diagStats { margin: 8px 0 0; color: var(--muted); font-size: 11px; white-space: pre-wrap; }
+.diagStats { margin: 8px 0 0; color: var(--muted); font-size: 11px; white-space: pre; overflow-x: auto; }
+.diagHead { color: var(--muted); font-size: 11px; }
 .lil-gui.root { position: absolute; top: 8px; right: calc(var(--side-width) + 20px); }
 #view3d > .lil-gui.root { top: auto; right: auto; left: 8px; bottom: 8px; }
 /* several buttons side by side in one lil-gui row (undo / redo, ko-fi / github) */

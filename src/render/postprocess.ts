@@ -1,5 +1,8 @@
+import { coloredOutline } from './coloredOutline';
+import { gapBlackOutline, stableColoredOutline } from './gapOutline';
 import { OUTLINE_INDEX, paletteIndex, RAMP_NAMES, rampIndex, SHADES } from './palette';
 import type { PortraitBackground } from './portrait';
+import { ridgeCoverage } from './ridge';
 
 /** Sprite frame as palette indices, row-major from the top-left; 0 is transparent. */
 export interface IndexedFrame {
@@ -8,7 +11,10 @@ export interface IndexedFrame {
   data: Uint8Array;
 }
 
-export type Outline = 'none' | 'inner' | 'outer';
+export type Outline = 'none' | 'inner' | 'outer' | 'colored' | 'stableColored' | 'gapBlack';
+
+/** How coverage decides which pixels are opaque: a fixed threshold, or ridge-preserving (see ridge.ts). */
+export type Downsample = 'classic' | 'ridge';
 
 const RAMP_COUNT = RAMP_NAMES.length;
 
@@ -18,6 +24,8 @@ export interface PostprocessSettings {
   /** Light thresholds between shades 0|1, 1|2 and 2|3. */
   thresholds: [number, number, number];
   outline: Outline;
+  /** classic when absent. */
+  downsample?: Downsample;
 }
 
 /**
@@ -113,13 +121,20 @@ export function minCovered(ss: number, coverage: number): number {
   return Math.max(1, Math.round(ss * ss * coverage));
 }
 
-/** A pixel is opaque if enough of its block is covered, and its shade comes from its ramp's average light. */
-export function shadePixels(f: FrameSamples, settings: Pick<PostprocessSettings, 'coverage' | 'thresholds'>): IndexedFrame {
-  const out = new Uint8Array(f.width * f.height);
+/** Which pixels are opaque (1): with classic downsampling, those with enough of their block covered. */
+export function coverageMask(f: FrameSamples, settings: Pick<PostprocessSettings, 'coverage' | 'downsample'>): Uint8Array {
   const min = minCovered(f.ss, settings.coverage);
+  if (settings.downsample === 'ridge') return ridgeCoverage(f, min);
+  return f.covered.map((c) => (c >= min ? 1 : 0));
+}
+
+/** The pixels coverageMask makes opaque, each shaded from its ramp's average light. */
+export function shadePixels(f: FrameSamples, settings: Pick<PostprocessSettings, 'coverage' | 'thresholds' | 'downsample'>): IndexedFrame {
+  const out = new Uint8Array(f.width * f.height);
+  const opaque = coverageMask(f, settings);
   const [t0, t1, t2] = settings.thresholds;
   for (let i = 0; i < out.length; i++) {
-    if (f.ramp[i] === NO_RAMP || f.covered[i] < min) continue;
+    if (f.ramp[i] === NO_RAMP || !opaque[i]) continue;
     const light = f.light[i] / f.count[i] / 255;
     const shade = light < t0 ? 0 : light < t1 ? 1 : light < t2 ? 2 : 3;
     out[i] = paletteIndex(f.ramp[i], shade);
@@ -134,9 +149,17 @@ export interface ShadeStages {
   final: IndexedFrame;
 }
 
+/** The outlines that live in modules of their own. */
+const OUTLINERS: Record<'colored' | 'stableColored' | 'gapBlack', (f: IndexedFrame) => IndexedFrame> = {
+  colored: coloredOutline,
+  stableColored: stableColoredOutline,
+  gapBlack: (f) => gapBlackOutline(f),
+};
+
 export function shadeStages(f: FrameSamples, settings: PostprocessSettings, glow: readonly number[] = []): ShadeStages {
   const shaded = shadePixels(f, settings);
-  const outlined = settings.outline === 'none' ? shaded : outline(shaded, settings.outline);
+  const o = settings.outline;
+  const outlined = o === 'none' ? shaded : o === 'inner' || o === 'outer' ? outline(shaded, o) : OUTLINERS[o](shaded);
   return { shaded, outlined, final: dither(outlined, f.opacity, f.phase, glow) };
 }
 
@@ -172,8 +195,9 @@ function touches(f: IndexedFrame, x: number, y: number, wantOpaque: boolean): bo
 /**
  * inner: edge pixels drop to the darkest shade of their own ramp;
  * outer: a 1 px dark line is added around the silhouette.
+ * (colored is coloredOutline; stableColored and gapBlack are in gapOutline.ts.)
  */
-export function outline(f: IndexedFrame, mode: Exclude<Outline, 'none'>): IndexedFrame {
+export function outline(f: IndexedFrame, mode: 'inner' | 'outer'): IndexedFrame {
   const data = new Uint8Array(f.data);
   for (let y = 0; y < f.height; y++) {
     for (let x = 0; x < f.width; x++) {

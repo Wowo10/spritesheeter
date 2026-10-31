@@ -187,8 +187,9 @@ Pick which animation to **preview**, and set the frame count (1–12) for each o
 | pixels / unit | How large the unit is drawn inside the cell |
 | elevation | Camera angle above the ground |
 | ground anchor | Height in the cell where the feet stand |
-| outline | None, inner or outer dark outline |
+| outline | None, inner or outer dark outline, or one of three outer outlines that keep narrow gaps between parts open. `colored` is in the darkest shade of the material it borders on the lit side and black on the shadowed side, and leaves 1 px gaps between parts open (2 px gaps are outlined on one side only). `stableColored` is the same, but always in the material's darkest shade, whatever the light. `gapBlack` is the black outer outline, except that it leaves gaps between separate parts open and doesn't fill holes of up to 4 px |
 | min coverage | How much of a pixel must be covered for it to be drawn. Higher values drop thin details. |
+| downsample | `classic` draws every pixel covered at least **min coverage**. `ridge` draws thin parts (under 1.5 px across, like shafts, staffs and thin limbs) exactly 1 px wide wherever they fall between pixels, so they don't vanish or swell to 2 px as they move; everything else is as with `classic`. |
 | supersample | Render resolution per output pixel. Higher values are smoother but slower. Big frames use less (256 px frames get at most 8×); the sheet info line shows when that happens. |
 
 ### Lighting

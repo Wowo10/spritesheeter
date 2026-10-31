@@ -12,7 +12,7 @@ import { clearDecay } from './render/decay';
 import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
 import { PALETTE, RAMP_NAMES, TEAM_COLOR_NAMES, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
 import { DEFAULT_PORTRAIT, PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES, type PortraitSettings } from './render/portrait';
-import { framePortrait, type FrameSamples, type IndexedFrame, type Outline } from './render/postprocess';
+import { framePortrait, type Downsample, type FrameSamples, type IndexedFrame, type Outline } from './render/postprocess';
 import { anchorOf, DEFAULT_SPRITE_SETTINGS, shadeSprite, shadeSprites, SpriteRenderer, type Direction, type SpriteSettings } from './render/spriteRenderer';
 import { UndoHistory } from './history';
 import { decodeSettings, diffSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
@@ -42,7 +42,8 @@ const BASIC_ANIMS: readonly AnimationName[] = ['idle', 'walk', 'attack', 'death'
 
 // the big sizes are for buildings and other large models
 const FRAME_SIZES = [32, 48, 64, 96, 128, 160, 192, 256];
-const OUTLINES: Outline[] = ['none', 'inner', 'outer'];
+const OUTLINES: Outline[] = ['none', 'inner', 'outer', 'colored', 'stableColored', 'gapBlack'];
+const DOWNSAMPLES: Downsample[] = ['classic', 'ridge'];
 const SUPERSAMPLES = [4, 8, 12];
 
 const state = {
@@ -128,6 +129,7 @@ const SHARE_CHOICES: Record<string, readonly unknown[]> = {
   ...Object.fromEntries(['walls', 'trim', 'roofColor', 'light'].map((k) => [`building.${k}`, RAMP_NAMES])),
   'sprite.frameSize': FRAME_SIZES,
   'sprite.outline': OUTLINES,
+  'sprite.downsample': DOWNSAMPLES,
   'sprite.supersample': SUPERSAMPLES,
   'portrait.size': PORTRAIT_SIZES,
   'portrait.background': PORTRAIT_BACKGROUNDS,
@@ -424,7 +426,7 @@ const effectsSprite = () => ({ ...state.sprite, anchorY: 0.5 });
 async function renderEffects(goOn: () => Promise<boolean>): Promise<boolean> {
   const magic = magicColor();
   // shading settings aside: shadeEffects applies those
-  const { outline: _, coverage: __, thresholds: ___, ...shape } = state.sprite;
+  const { outline: _, coverage: __, thresholds: ___, downsample: ____, ...shape } = state.sprite;
   const key = JSON.stringify({ magic, sprite: shape, lighting: state.lighting });
   if (key === effectsKey) return true;
   // until they're all rendered again, they're not as last rendered
@@ -817,6 +819,7 @@ spriteFolder.add(state.sprite, 'elevation', 10, 70, 1).onFinishChange(queueRegen
 spriteFolder.add(state.sprite, 'anchorY', 0.5, 0.95, 0.01).name('ground anchor').onFinishChange(queueRegenerate);
 spriteFolder.add(state.sprite, 'outline', OUTLINES).onFinishChange(queueShade);
 spriteFolder.add(state.sprite, 'coverage', 0.1, 0.9, 0.05).name('min coverage').onFinishChange(queueShade);
+spriteFolder.add(state.sprite, 'downsample', DOWNSAMPLES).onFinishChange(queueShade);
 spriteFolder.add(state.sprite, 'supersample', SUPERSAMPLES).onFinishChange(queueRegenerate);
 
 /** Portrait controls only re-render the portrait, not the sheet; its background and border only re-shade it. */
@@ -1080,11 +1083,33 @@ window.addEventListener('drop', (e) => {
 if (import.meta.env.DEV && new URLSearchParams(location.search).has('diag')) {
   void import('./ui/diagnosticsPanel').then(({ DiagnosticsPanel }) => {
     diagnostics = new DiagnosticsPanel(gui, side, {
-      row: () => sampled.find((a) => a.name === state.previewAnim),
+      rows: () => [...sampled, ...effectsSampled.map((a) => ({ ...a, name: `fx:${a.name}` }))],
+      previewed: () => state.previewAnim,
       settings: () => state.sprite,
       palette: () => teamPalette(state.team),
       rerender: regenerate,
+      renderShifted: async (steps) => {
+        await renderSettled();
+        const row = playables.find((a) => a.name === state.previewAnim);
+        if (!subject || !row) return null;
+        const { root } = subject;
+        const start = root.position.clone();
+        // a pixel right and a pixel down over the steps; the camera looks down, so world y shows shortened
+        const right = 1 / state.sprite.pixelsPerUnit;
+        const down = right / Math.cos((state.sprite.elevation * Math.PI) / 180);
+        try {
+          return await sprites.renderFrames(root, steps, (i) => {
+            const opacity = row.apply(frameTime(row, 0));
+            root.position.set(start.x + (i / steps) * right, start.y - (i / steps) * down, start.z);
+            return opacity;
+          }, state.sprite);
+        } finally {
+          root.position.copy(start);
+        }
+      },
     });
+    // for scripts driving the page to compare configurations
+    Object.assign(window, { ssheetDev: { diagnostics, state, settled: renderSettled, fit: fitPreviews } });
     fitPreviews();
     // the first render may be past the previewed row, its passes gone
     regenerate();

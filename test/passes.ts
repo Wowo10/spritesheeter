@@ -88,3 +88,31 @@ export function barPass(width: number, ss: number, x0: number, widthSamples: num
   for (let y = 0; y < ss; y++) for (let x = x0; x < x0 + widthSamples; x++) buf.set([2 * STEP, 230, 0, 255], (y * n + x) * 4);
   return buf;
 }
+
+export interface Line {
+  /** Centre, in output pixels from the top-left corner. */
+  cx: number;
+  cy: number;
+  /** Direction in degrees: 0 points right, 90 down. */
+  angle: number;
+  /** In output pixels. */
+  length: number;
+  width: number;
+}
+
+/** A sprite pass of `size` x `size` output pixels with a straight bar of ramp 1 lit at 0.9; see Line. */
+export function linePass(size: number, ss: number, l: Line): Uint8Array {
+  const n = size * ss;
+  const buf = new Uint8Array(n * n * 4);
+  const dx = Math.cos((l.angle * Math.PI) / 180);
+  const dy = Math.sin((l.angle * Math.PI) / 180);
+  for (let sy = 0; sy < n; sy++) {
+    for (let sx = 0; sx < n; sx++) {
+      const px = (sx + 0.5) / ss - l.cx;
+      const py = (sy + 0.5) / ss - l.cy;
+      if (Math.abs(px * dx + py * dy) > l.length / 2 || Math.abs(-px * dy + py * dx) > l.width / 2) continue;
+      buf.set([2 * STEP, 230, 0, 255], ((n - 1 - sy) * n + sx) * 4);
+    }
+  }
+  return buf;
+}

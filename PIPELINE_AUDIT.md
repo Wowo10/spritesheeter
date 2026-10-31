@@ -1,6 +1,8 @@
 # Sprite post-processing pipeline: audit
 
-What turns a supersampled 3D render into an indexed sprite frame, where it loses information, and what's worth trying to make small sprites read better. Nothing described here changes what's exported yet. The only code changes so far are a behaviour-preserving split of `shadeFrame` into stages, a dev-only diagnostics panel, and tests.
+What turns a supersampled 3D render into an indexed sprite frame, where it loses information, and what's worth trying to make small sprites read better.
+
+> The first two proposals, ridge-preserving coverage (§4 A) and the colored outer outline (§5 1), are now implemented as opt-in options, along with two refinements of the outline (`stableColored`, `gapBlack`). The results are in [QUALITY_EXPERIMENTS.md](QUALITY_EXPERIMENTS.md). Nothing described here changes what's exported yet. The only code changes so far are a behaviour-preserving split of `shadeFrame` into stages, a dev-only diagnostics panel, and tests.
 
 ## 1. The pipeline as it is
 

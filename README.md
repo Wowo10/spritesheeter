@@ -19,7 +19,7 @@ Other scripts:
 | `npm run build` | Type-checks and builds a static site into `dist/` |
 | `npm run preview` | Serves the built `dist/` |
 | `npm test` | Runs the unit tests (Vitest) |
-| `npm run insert_g_secret -- G-XXXXXXXXXX` | After `build`, writes your Google Analytics ID into `dist/index.html` in place of the `__G_ANA_SECRET__` placeholder. Without it the placeholder stays and analytics is off. |
+| `npm run insert_goatcounter -- <code>` | After `build`, writes your [GoatCounter](https://www.goatcounter.com/) code (the `yourname` in `yourname.goatcounter.com`) into `dist/index.html` in place of the `__GOATCOUNTER_CODE__` placeholder. Without it the placeholder stays and analytics is off. |
 | `npm run insert_links -- <ko-fi name> <github user>` | After `build`, writes your Ko-fi and GitHub accounts into `dist/index.html` in place of the `__KOFI_ACCOUNT__` and `__GITHUB_ACCOUNT__` placeholders. This shows the **☕ ko-fi** and **⭐ github** buttons under **🎮 playground**. The GitHub value can also be `user/repo`. Pass `-` to leave a button hidden. Without it both buttons stay hidden. |
 
 ## The interface
@@ -289,7 +289,7 @@ src/
   ui/                  3D preview, direction preview, panel splitter
   playground/          the RTS test field: sheet slicing, props, units fighting and gathering
 test/                  Vitest tests
-scripts/               build helpers (Google Analytics ID insertion)
+scripts/               build helpers (GoatCounter code and link insertion)
 ```
 
 Built with [three.js](https://threejs.org/), [lil-gui](https://lil-gui.georgealways.com/), TypeScript and Vite.

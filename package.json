@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "insert_g_secret": "node scripts/insert-g-secret.js",
+    "insert_goatcounter": "node scripts/insert-goatcounter.js",
     "insert_links": "node scripts/insert-links.js"
   },
   "dependencies": {

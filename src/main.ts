@@ -738,6 +738,15 @@ viewFolder.add(view, 'spriteView').name('sprite camera');
 // wheel over the view zooms too, double-click resets
 viewFolder.add(view.ortho, 'zoom', MIN_ZOOM, MAX_ZOOM, 0.01).name('sprite zoom').onChange((z: number) => view.setSpriteZoom(z)).listen();
 
+const portraitFolder = restoreOpen(gui.addFolder('Portrait'), true);
+portraitFolder.add(state.portrait, 'size', PORTRAIT_SIZES).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'zoom', ...SHARE_RANGES['portrait.zoom'], 0.05).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'turn', ...SHARE_RANGES['portrait.turn'], 1).name('turn (°)').onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'elevation', ...SHARE_RANGES['portrait.elevation'], 1).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'frames', ...SHARE_RANGES['portrait.frames'], 1).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'background', PORTRAIT_BACKGROUNDS).onFinishChange(reframePortrait);
+portraitFolder.add(state.portrait, 'border').onFinishChange(reframePortrait);
+
 const exportFolder = restoreOpen(gui.addFolder('Export'), true);
 const exportControllers = ANIMATION_NAMES.map((name) => exportFolder.add(state.exportAnims, name));
 exportFolder.add(state, 'teamMask').name('team mask');
@@ -891,15 +900,6 @@ function rebindModel(): void {
   modelFolders = [rows, materials];
 }
 rebindModel();
-
-const portraitFolder = restoreOpen(gui.addFolder('Portrait'), true);
-portraitFolder.add(state.portrait, 'size', PORTRAIT_SIZES).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'zoom', ...SHARE_RANGES['portrait.zoom'], 0.05).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'turn', ...SHARE_RANGES['portrait.turn'], 1).name('turn (°)').onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'elevation', ...SHARE_RANGES['portrait.elevation'], 1).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'frames', ...SHARE_RANGES['portrait.frames'], 1).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'background', PORTRAIT_BACKGROUNDS).onFinishChange(reframePortrait);
-portraitFolder.add(state.portrait, 'border').onFinishChange(reframePortrait);
 
 // --- undo -------------------------------------------------------------------
 

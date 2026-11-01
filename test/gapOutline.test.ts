@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { coloredOutline } from '../src/render/coloredOutline';
-import { gapBlackOutline, holes, MATERIAL_OUTLINE, MATERIAL_RANK, SMALL_HOLE, stableColoredOutline } from '../src/render/gapOutline';
+import { gapBlackOutline, holes, MATERIAL_OUTLINE, MATERIAL_RANK, pinholes, SMALL_HOLE, stableColoredOutline } from '../src/render/gapOutline';
 import { OUTLINE_INDEX, paletteIndex, RAMP_NAMES, rampIndex, SHADES, TEAM_INDICES } from '../src/render/palette';
 import { outline, sampleFrame, shadeFrame, shadePixels, shadeStages, type IndexedFrame, type PostprocessSettings } from '../src/render/postprocess';
 import { randomPass, STEP } from './passes';
@@ -188,6 +188,95 @@ describe('gap-preserving black outer outline', () => {
     const st = shadeStages(f, { ...s, outline: 'gapBlack' });
     expect(st.outlined.data).toEqual(gapBlackOutline(shadePixels(f, s)).data);
     expect(shadeFrame(f, { ...s, outline: 'gapBlack' }).data).toEqual(st.final.data);
+  });
+
+  describe('pinholes', () => {
+    const open = (f: IndexedFrame) => gapBlackOutline(f, { fillPinholes: false });
+
+    it('fills an enclosed single-pixel hole, as the outer outline does, where it was left open', () => {
+      const f = frame(['.....', '.XXX.', '.X.X.', '.XXX.', '.....']);
+      expect(marks(f, gapBlackOutline(f))[2]).toBe('oXoXo');
+      expect(marks(f, open(f))[2]).toBe('oX.Xo');
+      expect(gapBlackOutline(f).data).toEqual(outline(f, 'outer').data);
+    });
+
+    it('fills one shut in on all four sides that ground reaches through a single corner: a dead end', () => {
+      // the hole's lower right corner opens onto the background outside
+      const f = frame(['.......', '.XXXX..', '.XX.X..', '.XXX...', '.......']);
+      expect(holes(f)[2 * 7 + 3]).toBe(1);
+      expect(marks(f, gapBlackOutline(f)).slice(2, 4)).toEqual(['oXXoXo.', 'oXXXo..']);
+      expect(gapBlackOutline(f).data).toEqual(outline(f, 'outer').data);
+    });
+
+    it('fills a pair of specks touching at a corner, each the other one’s dead end', () => {
+      const f = frame(['......', '.XXXX.', '.X.XX.', '.XX.X.', '.XXXX.', '......']);
+      expect(marks(f, gapBlackOutline(f)).slice(2, 4)).toEqual(['oXoXXo', 'oXXoXo']);
+      expect(marks(f, open(f)).slice(2, 4)).toEqual(['oX.XXo', 'oXX.Xo']);
+    });
+
+    it('fills a chain of them whole, not just its ends: enclosed, or a crack leading in to a dead end', () => {
+      const chain = frame(['.......', '.XXXXX.', '.X.XXX.', '.XX.XX.', '.XXX.X.', '.XXXXX.', '.......']);
+      // the middle one has two transparent corners until its ends are filled
+      expect(marks(chain, gapBlackOutline(chain)).slice(2, 5)).toEqual(['oXoXXXo', 'oXXoXXo', 'oXXXoXo']);
+      expect(gapBlackOutline(chain).data).toEqual(outline(chain, 'outer').data);
+      // in from the outside at the top right, through two pixels, to nothing
+      const crack = frame(['.......', '.XXXX..', '.XXX.X.', '.XX.XX.', '.XXXXX.', '.......']);
+      expect(marks(crack, open(crack)).slice(2, 4)).toEqual(['oXXX.Xo', 'oXX.XXo']);
+      expect(marks(crack, gapBlackOutline(crack)).slice(2, 4)).toEqual(['oXXXoXo', 'oXXoXXo']);
+      expect(Array.from(pinholes(crack))).toEqual(Array.from(crack.data, (_, i) => +(i === 2 * 7 + 4 || i === 3 * 7 + 3)));
+    });
+
+    it('keeps a diagonal channel open: ground passes through its pixels corner to corner', () => {
+      // two parallel diagonals, as a leg beside a cloak or a spear beside an arm
+      const f = frame(['.........', '.X.X.....', '..X.X....', '...X.X...', '....X.X..', '.........']);
+      // each pixel of the channel is shut in along rows and columns: a 1 px hole on its own
+      expect([holes(f)[2 * 9 + 3], holes(f)[3 * 9 + 4]]).toEqual([1, 1]);
+      expect(gapBlackOutline(f).data).toEqual(open(f).data);
+      expect(marks(f, gapBlackOutline(f)).slice(2, 4)).toEqual(['.oX.Xo...', '..oX.Xo..']);
+    });
+
+    it('leaves exterior gaps alone: slits open to the outside and gaps between parts', () => {
+      const legs = frame(['.......', '.XXXXX.', '.XX.XX.', '.XX.XX.', '.XX.XX.', '.......']);
+      expect(gapBlackOutline(legs).data).toEqual(open(legs).data);
+      expect(marks(legs, gapBlackOutline(legs))[3]).toBe('oXX.XXo');
+      for (const parts of [['.X.X.'], ['X..X'], ['X', '.', 'X']]) expect(gapBlackOutline(frame(parts)).data).toEqual(open(frame(parts)).data);
+    });
+
+    it('still outlines one-pixel dents in an edge, and only as before', () => {
+      const notch = frame(['.....', '.X.X.', '.XXX.', '.....']);
+      expect(gapBlackOutline(notch).data).toEqual(open(notch).data);
+      expect(marks(notch, gapBlackOutline(notch))[1]).toBe('oXoXo');
+    });
+
+    it('keeps a narrow gap between limbs open when it is more than a pixel: a 2 px hole, a 2×2 hole', () => {
+      const loop = frame(['.....', '.XXX.', '.X.X.', '.X.X.', '.XXX.', '.....']);
+      expect(marks(loop, gapBlackOutline(loop)).slice(2, 4)).toEqual(['oX.Xo', 'oX.Xo']);
+      const ring = frame(['......', '.XXXX.', '.X..X.', '.X..X.', '.XXXX.', '......']);
+      expect(gapBlackOutline(ring).data).toEqual(open(ring).data);
+    });
+
+    it('leaves diagonal edges and thin diagonal parts as the outer outline rings them', () => {
+      const wedge = frame(['......', '.X....', '.XX...', '.XXX..', '.XXXX.', '......']);
+      const spear = frame(['.......', '.X.....', '..X....', '...XXX.', '...XXX.', '.......']);
+      for (const f of [wedge, spear]) {
+        expect(gapBlackOutline(f).data).toEqual(open(f).data);
+        expect(gapBlackOutline(f).data).toEqual(outline(f, 'outer').data);
+      }
+    });
+
+    it('changes nothing but pinholes, to black, which the outer outline draws too, and leaves the sprite alone', () => {
+      for (const [a] of relit) {
+        const filled = gapBlackOutline(a).data;
+        const before = open(a).data;
+        const outer = outline(a, 'outer').data;
+        const h = holes(a);
+        filled.forEach((v, i) => {
+          if (a.data[i]) expect(v).toBe(a.data[i]);
+          if (v === before[i]) return;
+          expect([h[i], before[i], v, outer[i]]).toEqual([1, 0, OUTLINE_INDEX, OUTLINE_INDEX]);
+        });
+      }
+    });
   });
 });
 

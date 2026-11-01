@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "bench:visual": "node bench/visual/run.mjs",
     "insert_goatcounter": "node scripts/insert-goatcounter.js",
     "insert_links": "node scripts/insert-links.js"
   },

@@ -49,6 +49,25 @@ describe('mergeSettings', () => {
     expect(t.nested.b).toBe('y');
   });
 
+  it('skips numbers outside their range, in arrays too, and infinite ones in arrays', () => {
+    const t = target();
+    const ranges = { size: [16, 256], list: [0, 1] } as const;
+    mergeSettings(t, { size: 512, list: [0.1, 0.2, 1.5] }, {}, { ranges });
+    mergeSettings(t, JSON.parse('{"list": [0.1, 1e999, 0.3]}'), {}, { ranges });
+    expect(t).toEqual(target());
+    mergeSettings(t, { size: 16, list: [0, 0.5, 1] }, {}, { ranges });
+    expect([t.size, t.list]).toEqual([16, [0, 0.5, 1]]);
+  });
+
+  it('lists what it skipped, unknown keys included', () => {
+    const skipped: string[] = [];
+    mergeSettings(target(), { extra: 1, size: '64', nested: { a: 'x', c: 2 }, list: [1], mode: 'outer', flag: true }, { mode: ['inner'] }, { skipped });
+    expect(skipped.sort()).toEqual(['extra', 'list', 'mode', 'nested.a', 'nested.c', 'size']);
+    const none: string[] = [];
+    mergeSettings(target(), { size: 64, nested: { b: 'y' } }, {}, { skipped: none });
+    expect(none).toEqual([]);
+  });
+
   it('does nothing with a non-object', () => {
     const t = target();
     for (const v of [null, 5, 'x', [1]]) mergeSettings(t, v);

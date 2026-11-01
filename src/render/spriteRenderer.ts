@@ -31,8 +31,9 @@ export const DEFAULT_SPRITE_SETTINGS: SpriteSettings = {
   supersample: 8,
   coverage: 0.3,
   thresholds: DEFAULT_LIGHTING.thresholds,
-  outline: 'inner',
-  downsample: 'classic',
+  outline: 'gapBlack',
+  downsample: 'ridge',
+  pinholes: 'fill',
 };
 
 export function anchorOf(s: Pick<SpriteSettings, 'frameSize' | 'anchorY'>): { x: number; y: number } {

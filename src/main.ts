@@ -1,6 +1,6 @@
 import GUI, { type Controller } from 'lil-gui';
 import { buildEffects, disposeEffects, type Effects } from './effects/effects';
-import { ANIMATION_NAMES, DEFAULT_FRAME_COUNTS, type AnimationName } from './anim/humanoid-anims';
+import { ANIMATION_NAMES, type AnimationName } from './anim/humanoid-anims';
 import { frameTime } from './anim/types';
 import { loadModelFiles, MODEL_EXTENSIONS } from './custom/load';
 import { CustomModel, DEFAULT_MODEL_HEIGHT, guessRows } from './custom/model';
@@ -9,19 +9,19 @@ import { exportGlb, rowDuration } from './export/model';
 import { packSheet, packStrip, teamMeta, type AnimationFrames, type Sheet } from './export/packer';
 import { openPlayground } from './playground/playground';
 import { clearDecay } from './render/decay';
-import { DEFAULT_LIGHTING, MaterialLibrary } from './render/materials';
+import { MaterialLibrary } from './render/materials';
 import { PALETTE, RAMP_NAMES, TEAM_COLOR_NAMES, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
-import { DEFAULT_PORTRAIT, PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES, type PortraitSettings } from './render/portrait';
-import { framePortrait, type Downsample, type FrameSamples, type IndexedFrame, type Outline } from './render/postprocess';
-import { anchorOf, DEFAULT_SPRITE_SETTINGS, shadeSprite, shadeSprites, SpriteRenderer, type Direction, type SpriteSettings } from './render/spriteRenderer';
+import { PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES } from './render/portrait';
+import { framePortrait, type FrameSamples, type IndexedFrame } from './render/postprocess';
+import { anchorOf, shadeSprite, shadeSprites, SpriteRenderer, type Direction } from './render/spriteRenderer';
 import { UndoHistory } from './history';
-import { decodeSettings, diffSettings, encodeSettings, mergeSettings, SHARE_PARAM } from './share';
+import { mergeSettings } from './share';
+import { encodeShareLink, readShareLink, shareParam, withShareParam } from './shareLink';
+import { defaultSettings, DOWNSAMPLES, FRAME_SIZES, OUTLINES, PINHOLES, SHARE_CHOICES, SHARE_RANGES, SUPERSAMPLES, type SharedSettings } from './settings';
 import { customSubject, kindDef, KINDS, type AnyParams, type Kind, type Playable, type Subject } from './subjects';
-import { DEFAULT_BUILDING, ROOFS, type BuildingParams } from './unit/building-params';
-import { BACKS, BARDINGS, BEAST_PRESETS, EARS, HORNS, WINGS, type BeastParams } from './unit/beast-params';
-import { copyMounted, MOUNT_BARDINGS, MOUNTED_PRESETS, type MountedParams } from './unit/mounted';
-import { ARMORS, BEARDS, BODIES, CAPES, EAR_STYLES, FACES, GAITS, HAIR_STYLES, HAND_ITEMS, HELMETS, PRESETS, TEETH, type UnitParams } from './unit/params';
-import { VEHICLE_PRESETS, WEAPONS, type VehicleParams } from './unit/vehicle-params';
+import { BEAST_PRESETS, type BeastParams } from './unit/beast-params';
+import { MOUNT_BARDINGS, type MountedParams } from './unit/mounted';
+import { PRESETS, type UnitParams } from './unit/params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
 import { CompassPreview, StripPreview } from './ui/spritePreview';
 import { beastControllers, buildingControllers, humanoidControllers, presetOf, rememberOpen, restoreOpen, vehicleControllers } from './ui/controls';
@@ -37,44 +37,8 @@ const PREVIEW_DECAY_FPS = 2;
 
 const NO_CLIP = '(none)';
 
-/** Animations an export includes until unchecked; the rest (spells, work) only for units that need them. */
-const BASIC_ANIMS: readonly AnimationName[] = ['idle', 'walk', 'attack', 'death', 'build'];
-
-// the big sizes are for buildings and other large models
-const FRAME_SIZES = [32, 48, 64, 96, 128, 160, 192, 256];
-const OUTLINES: Outline[] = ['none', 'inner', 'outer', 'colored', 'stableColored', 'gapBlack'];
-const DOWNSAMPLES: Downsample[] = ['classic', 'ridge'];
-const SUPERSAMPLES = [4, 8, 12];
-
 const state = {
-  /** Which procedural generator is in use; each keeps its own settings. */
-  kind: 'humanoid' as Kind,
-  preset: 'swordsman',
-  unit: { ...PRESETS.swordsman } as UnitParams,
-  beast: { ...BEAST_PRESETS.wolf } as BeastParams,
-  mounted: copyMounted(MOUNTED_PRESETS.knight),
-  vehicle: { ...VEHICLE_PRESETS.catapult } as VehicleParams,
-  /** Buildings have no presets: the seed lays them out. */
-  building: { ...DEFAULT_BUILDING } as BuildingParams,
-  frames: { ...DEFAULT_FRAME_COUNTS },
-  /** Seconds each decay stage lies on the ground for. */
-  decayHold: 8,
-  sprite: { ...DEFAULT_SPRITE_SETTINGS, thresholds: [...DEFAULT_SPRITE_SETTINGS.thresholds] } as SpriteSettings,
-  lighting: {
-    ambient: DEFAULT_LIGHTING.ambient,
-    diffuse: DEFAULT_LIGHTING.diffuse,
-    azimuth: DEFAULT_LIGHTING.azimuth,
-    elevation: DEFAULT_LIGHTING.elevation,
-    fill: DEFAULT_LIGHTING.fill,
-  },
-  /** The close-up for a selection panel or command card. */
-  portrait: { ...DEFAULT_PORTRAIT } as PortraitSettings,
-  previewAnim: 'walk' as AnimationName,
-  /** Which rows go into the exported sheet; the previews always show them all. */
-  exportAnims: Object.fromEntries(ANIMATION_NAMES.map((n) => [n, BASIC_ANIMS.includes(n)])) as Record<AnimationName, boolean>,
-  /** Also export the team mask: the team-coloured pixels, grey per shade. */
-  teamMask: false,
-  team: 'red' as TeamColor,
+  ...defaultSettings(),
   /** What the sheet shows: the procedural unit or the loaded custom model. */
   source: 'unit' as 'unit' | 'model',
   model: {
@@ -87,125 +51,47 @@ const state = {
 
 // --- share links ------------------------------------------------------------
 
-/** Values a shared link may set for fields that take one of a set; see mergeSettings. */
-const UNIT_CHOICES: Record<string, readonly unknown[]> = {
-  helmet: HELMETS,
-  face: FACES,
-  beard: BEARDS,
-  teeth: TEETH,
-  ears: EAR_STYLES,
-  armor: ARMORS,
-  rightHand: HAND_ITEMS,
-  leftHand: HAND_ITEMS,
-  hairStyle: HAIR_STYLES,
-  cape: CAPES,
-  gait: GAITS,
-  body: BODIES,
-  ...Object.fromEntries(['skin', 'cloth', 'metal', 'hair', 'magic', 'capeColor'].map((k) => [k, RAMP_NAMES])),
-};
-const BEAST_CHOICES: Record<string, readonly unknown[]> = {
-  ears: EARS,
-  horns: HORNS,
-  back: BACKS,
-  barding: BARDINGS,
-  wings: WINGS,
-  ...Object.fromEntries(['hide', 'belly', 'accent', 'metal', 'magic', 'wingColor'].map((k) => [k, RAMP_NAMES])),
-};
-const prefixed = (prefix: string, choices: Record<string, readonly unknown[]>) =>
-  Object.fromEntries(Object.entries(choices).map(([k, v]) => [prefix + k, v]));
-
-const SHARE_CHOICES: Record<string, readonly unknown[]> = {
-  kind: KINDS,
-  preset: [...Object.keys(PRESETS), ...Object.keys(BEAST_PRESETS), ...Object.keys(MOUNTED_PRESETS), ...Object.keys(VEHICLE_PRESETS), 'random'],
-  previewAnim: ANIMATION_NAMES,
-  team: TEAM_COLOR_NAMES,
-  ...prefixed('unit.', UNIT_CHOICES),
-  ...prefixed('beast.', BEAST_CHOICES),
-  ...prefixed('mounted.rider.', UNIT_CHOICES),
-  ...prefixed('mounted.mount.', BEAST_CHOICES),
-  'vehicle.weapon': WEAPONS,
-  ...Object.fromEntries(['wood', 'metal', 'cloth', 'flame'].map((k) => [`vehicle.${k}`, RAMP_NAMES])),
-  'building.roof': ROOFS,
-  ...Object.fromEntries(['walls', 'trim', 'roofColor', 'light'].map((k) => [`building.${k}`, RAMP_NAMES])),
-  'sprite.frameSize': FRAME_SIZES,
-  'sprite.outline': OUTLINES,
-  'sprite.downsample': DOWNSAMPLES,
-  'sprite.supersample': SUPERSAMPLES,
-  'portrait.size': PORTRAIT_SIZES,
-  'portrait.background': PORTRAIT_BACKGROUNDS,
-};
-
 /**
- * Everything a share link carries: the procedural unit and how it's rendered. A custom model
- * stays behind, since its file can't travel in a URL. The objects are state's own.
+ * Everything a share link carries (see settings.ts): the procedural unit and how it's rendered.
+ * The objects are state's own.
  */
-function sharedSettings() {
+function sharedSettings(): SharedSettings {
   const { kind, preset, unit, beast, mounted, vehicle, building, frames, decayHold, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team } = state;
   return { kind, preset, unit, beast, mounted, vehicle, building, frames, decayHold, sprite, lighting, portrait, previewAnim, exportAnims, teamMask, team };
 }
 
-/** The settings the page opens with, which a share link only records the changes from. */
-const SHARE_DEFAULTS = JSON.parse(JSON.stringify(sharedSettings()));
-
-/** The field of state (and of a share link) that holds the settings of a kind. */
-const paramsKey = (kind: Kind) => (kind === 'humanoid' ? 'unit' : kind);
-
-/** The unit a preset gives, or the random one for the seed if it's not one of the kind's presets. */
-function presetParams(kind: Kind, preset: string, seed: number): AnyParams {
-  const def = kindDef(kind);
-  return Object.hasOwn(def.presets, preset) ? def.preset(preset, seed) : def.random(seed);
-}
+/** The settings the page opens with, which a share link starts from. */
+const STARTUP_SETTINGS = structuredClone(sharedSettings());
 
 /**
- * Applies the settings of a share link the page was opened from, before the GUI is built.
- * A v2 link records only what differs from the defaults, and from the unit its preset (or
- * seed) gives; a v1 link records everything.
+ * Applies the settings of a share link the page was opened from, before the GUI is built, as
+ * the link's own version reads them (see shareLink.ts). A link that can't be read changes
+ * nothing. The address is left as it is.
  */
 function loadSharedSettings(): void {
-  const text = new URLSearchParams(location.search).get(SHARE_PARAM);
+  const text = shareParam(location.search);
   if (!text) return;
   try {
-    const decoded = decodeSettings(text);
-    const shared: Record<string, unknown> = sharedSettings();
-    mergeSettings(shared, decoded, SHARE_CHOICES);
-    if ((decoded as { v?: unknown }).v === 2) {
-      const kind = shared.kind as Kind;
-      const key = paramsKey(kind);
-      shared[key] = presetParams(kind, shared.preset as string, (shared[key] as AnyParams).seed);
-      mergeSettings(shared, decoded, SHARE_CHOICES);
-    }
-    Object.assign(state, shared);
+    const { settings, skipped } = readShareLink(text, STARTUP_SETTINGS);
+    Object.assign(state, settings);
+    if (skipped.length) console.warn(`The share link's settings left out as unknown or invalid: ${skipped.join(', ')}`);
   } catch (e) {
-    alert(`Couldn't read the shared settings in this link: ${(e as Error).message}`);
+    alert(`Couldn't read the shared settings in this link: ${(e as Error).message.replace(/\.?$/, '.')} The page opened with its default settings.`);
   }
 }
 loadSharedSettings();
 
-/** What a share link records: the type in use and what differs from where it started. */
-function shareLinkSettings() {
-  const key = paramsKey(state.kind);
-  const shared: Record<string, unknown> = sharedSettings();
-  // only the type in use travels
-  for (const kind of KINDS) if (paramsKey(kind) !== key) delete shared[paramsKey(kind)];
-  const seed = procedural().seed;
-  const diff = diffSettings(shared, { ...SHARE_DEFAULTS, [key]: presetParams(state.kind, state.preset, seed) }) ?? {};
-  // the seed always, since the unit the changes apply to comes from it
-  return { v: 2, ...diff, [key]: { ...(diff[key] as object), seed } };
-}
-
 /** Puts the current settings in the address bar and copies the link. */
 async function copyShareLink(): Promise<void> {
-  const url = new URL(location.href);
-  url.hash = '';
-  url.searchParams.set(SHARE_PARAM, encodeSettings(shareLinkSettings()));
-  history.replaceState(null, '', url);
+  const href = withShareParam(location.href, encodeShareLink(sharedSettings(), STARTUP_SETTINGS));
+  history.replaceState(null, '', href);
   try {
-    await navigator.clipboard.writeText(url.href);
+    await navigator.clipboard.writeText(href);
     shareController.name('✓ link copied');
     setTimeout(() => shareController.name(SHARE_LABEL), 1500);
   } catch {
     // no clipboard outside secure contexts (e.g. the dev server opened by LAN address)
-    prompt('Copy this link to share these settings:', url.href);
+    prompt('Copy this link to share these settings:', href);
   }
 }
 
@@ -426,7 +312,7 @@ const effectsSprite = () => ({ ...state.sprite, anchorY: 0.5 });
 async function renderEffects(goOn: () => Promise<boolean>): Promise<boolean> {
   const magic = magicColor();
   // shading settings aside: shadeEffects applies those
-  const { outline: _, coverage: __, thresholds: ___, downsample: ____, ...shape } = state.sprite;
+  const { outline: _, coverage: __, thresholds: ___, downsample: ____, pinholes: _____, ...shape } = state.sprite;
   const key = JSON.stringify({ magic, sprite: shape, lighting: state.lighting });
   if (key === effectsKey) return true;
   // until they're all rendered again, they're not as last rendered
@@ -808,18 +694,24 @@ if (linkButtons.length > 1) {
 const animFolder = restoreOpen(gui.addFolder('Animation'));
 const previewController = animFolder.add(state, 'previewAnim', ANIMATION_NAMES).name('preview').onChange(showPreviewAnim);
 const frameControllers = ANIMATION_NAMES.map((name) =>
-  animFolder.add(state.frames, name, 1, 12, 1).name(`${name} frames`).onFinishChange(queueRegenerate),
+  animFolder.add(state.frames, name, ...SHARE_RANGES[`frames.${name}`], 1).name(`${name} frames`).onFinishChange(queueRegenerate),
 );
-const decayHoldController = animFolder.add(state, 'decayHold', 1, 60, 1).name('decay hold (s)').onFinishChange(queueRegenerate);
+const decayHoldController = animFolder.add(state, 'decayHold', ...SHARE_RANGES['decayHold'], 1).name('decay hold (s)').onFinishChange(queueRegenerate);
 
 const spriteFolder = restoreOpen(gui.addFolder('Sprite'), true);
 spriteFolder.add(state.sprite, 'frameSize', FRAME_SIZES).onFinishChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'pixelsPerUnit', 6, 80, 0.5).name('pixels / unit').onFinishChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'elevation', 10, 70, 1).onFinishChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'anchorY', 0.5, 0.95, 0.01).name('ground anchor').onFinishChange(queueRegenerate);
-spriteFolder.add(state.sprite, 'outline', OUTLINES).onFinishChange(queueShade);
-spriteFolder.add(state.sprite, 'coverage', 0.1, 0.9, 0.05).name('min coverage').onFinishChange(queueShade);
+spriteFolder.add(state.sprite, 'pixelsPerUnit', ...SHARE_RANGES['sprite.pixelsPerUnit'], 0.5).name('pixels / unit').onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'elevation', ...SHARE_RANGES['sprite.elevation'], 1).onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'anchorY', ...SHARE_RANGES['sprite.anchorY'], 0.01).name('ground anchor').onFinishChange(queueRegenerate);
+spriteFolder.add(state.sprite, 'outline', OUTLINES).onChange(showPinholes).onFinishChange(queueShade);
+spriteFolder.add(state.sprite, 'coverage', ...SHARE_RANGES['sprite.coverage'], 0.05).name('min coverage').onFinishChange(queueShade);
 spriteFolder.add(state.sprite, 'downsample', DOWNSAMPLES).onFinishChange(queueShade);
+// gapBlack's only; open is how it was before pinholes were filled
+const pinholesController = spriteFolder.add(state.sprite, 'pinholes', PINHOLES).name('gap black pinholes').onFinishChange(queueShade);
+function showPinholes(): void {
+  pinholesController.show(state.sprite.outline === 'gapBlack');
+}
+showPinholes();
 spriteFolder.add(state.sprite, 'supersample', SUPERSAMPLES).onFinishChange(queueRegenerate);
 
 /** Portrait controls only re-render the portrait, not the sheet; its background and border only re-shade it. */
@@ -832,13 +724,13 @@ const reframePortrait = () => {
   showPortrait();
 };
 const lightFolder = restoreOpen(gui.addFolder('Lighting'), true);
-lightFolder.add(state.lighting, 'azimuth', -180, 180, 1).name('light from ← →').onFinishChange(queueRegenerate);
-lightFolder.add(state.lighting, 'elevation', -30, 90, 1).name('light height').onFinishChange(queueRegenerate);
-lightFolder.add(state.lighting, 'diffuse', 0, 1.5, 0.01).name('light strength').onFinishChange(queueRegenerate);
-lightFolder.add(state.lighting, 'fill', 0, 0.8, 0.01).name('front fill').onFinishChange(queueRegenerate);
-lightFolder.add(state.lighting, 'ambient', 0, 1, 0.01).onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'azimuth', ...SHARE_RANGES['lighting.azimuth'], 1).name('light from ← →').onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'elevation', ...SHARE_RANGES['lighting.elevation'], 1).name('light height').onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'diffuse', ...SHARE_RANGES['lighting.diffuse'], 0.01).name('light strength').onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'fill', ...SHARE_RANGES['lighting.fill'], 0.01).name('front fill').onFinishChange(queueRegenerate);
+lightFolder.add(state.lighting, 'ambient', ...SHARE_RANGES['lighting.ambient'], 0.01).onFinishChange(queueRegenerate);
 state.sprite.thresholds.forEach((_, i) =>
-  lightFolder.add(state.sprite.thresholds, String(i) as '0', 0, 1, 0.01).name(`shade ${i}|${i + 1}`).onFinishChange(queueShade),
+  lightFolder.add(state.sprite.thresholds, String(i) as '0', ...SHARE_RANGES['sprite.thresholds'], 0.01).name(`shade ${i}|${i + 1}`).onFinishChange(queueShade),
 );
 
 const viewFolder = restoreOpen(gui.addFolder('View'), true);
@@ -1002,10 +894,10 @@ rebindModel();
 
 const portraitFolder = restoreOpen(gui.addFolder('Portrait'), true);
 portraitFolder.add(state.portrait, 'size', PORTRAIT_SIZES).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'zoom', 0.5, 2, 0.05).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'turn', -90, 90, 1).name('turn (°)').onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'elevation', 0, 45, 1).onFinishChange(updatePortrait);
-portraitFolder.add(state.portrait, 'frames', 1, 12, 1).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'zoom', ...SHARE_RANGES['portrait.zoom'], 0.05).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'turn', ...SHARE_RANGES['portrait.turn'], 1).name('turn (°)').onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'elevation', ...SHARE_RANGES['portrait.elevation'], 1).onFinishChange(updatePortrait);
+portraitFolder.add(state.portrait, 'frames', ...SHARE_RANGES['portrait.frames'], 1).onFinishChange(updatePortrait);
 portraitFolder.add(state.portrait, 'background', PORTRAIT_BACKGROUNDS).onFinishChange(reframePortrait);
 portraitFolder.add(state.portrait, 'border').onFinishChange(reframePortrait);
 
@@ -1038,6 +930,7 @@ function restoreSettings(text: string): void {
   mergeSettings(shared, saved, SHARE_CHOICES);
   Object.assign(state, shared);
   lastPreset[state.kind] = state.preset;
+  showPinholes();
   rebindUnit();
   rebuild();
   applyTeam();

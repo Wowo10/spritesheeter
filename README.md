@@ -187,9 +187,10 @@ Pick which animation to **preview**, and set the frame count (1–12) for each o
 | pixels / unit | How large the unit is drawn inside the cell |
 | elevation | Camera angle above the ground |
 | ground anchor | Height in the cell where the feet stand |
-| outline | None, inner or outer dark outline, or one of three outer outlines that keep narrow gaps between parts open. `colored` is in the darkest shade of the material it borders on the lit side and black on the shadowed side, and leaves 1 px gaps between parts open (2 px gaps are outlined on one side only). `stableColored` is the same, but always in the material's darkest shade, whatever the light. `gapBlack` is the black outer outline, except that it leaves gaps between separate parts open and doesn't fill holes of up to 4 px |
+| outline | None, inner or outer dark outline, or one of three outer outlines that keep narrow gaps between parts open. `colored` is in the darkest shade of the material it borders on the lit side and black on the shadowed side, and leaves 1 px gaps between parts open (2 px gaps are outlined on one side only). `stableColored` is the same, but always in the material's darkest shade, whatever the light. `gapBlack` is the black outer outline, except that it leaves gaps between separate parts open and doesn't fill holes of up to 4 px. The default is `gapBlack` |
+| gap black pinholes | Shown with `gapBlack`. `fill` (the default) closes pinholes, single enclosed pixels that would show as specks of ground inside the sprite; `open` leaves them, as Gap Black did before |
 | min coverage | How much of a pixel must be covered for it to be drawn. Higher values drop thin details. |
-| downsample | `classic` draws every pixel covered at least **min coverage**. `ridge` draws thin parts (under 1.5 px across, like shafts, staffs and thin limbs) exactly 1 px wide wherever they fall between pixels, so they don't vanish or swell to 2 px as they move; everything else is as with `classic`. |
+| downsample | `classic` draws every pixel covered at least **min coverage**. `ridge` draws thin parts (under 1.5 px across, like shafts, staffs and thin limbs) exactly 1 px wide wherever they fall between pixels, so they don't vanish or swell to 2 px as they move; everything else is as with `classic`. The default is `ridge` |
 | supersample | Render resolution per output pixel. Higher values are smoother but slower. Big frames use less (256 px frames get at most 8×); the sheet info line shows when that happens. |
 
 ### Lighting
@@ -252,9 +253,9 @@ Units move as far per loop as their legs (or wheels) carry them, so you can see 
 
 ## Sharing settings
 
-**🔗 copy share link** puts every setting in the address bar and copies the link: the unit, frame counts, sprite and lighting settings, preview animation and team colour. Anyone who opens the link gets the same unit, rendered the same way. Bookmark it to keep a unit you like.
+**🔗 copy share link** puts every setting in the address bar and copies the link: the unit, frame counts, sprite and lighting settings, preview animation and team colour. Anyone who opens the link gets the same unit, rendered the same way. Bookmark it to keep a unit you like. A link records only the settings that differ from the defaults, so if a default changes in a later version of the app, an older link that left that setting out takes the new default: links made before Ridge + Gap Black became the default now open with them unless they chose another outline or downsampling.
 
-The settings travel as URL-safe base64 of their JSON in the `s` query parameter (`?s=eyJ2IjoxLCJwcmVzZXQiOi...`). To read or edit one by hand, decode it with `atob` (after swapping `-`/`_` back to `+`/`/`). When a link is loaded, only settings this version of the app knows about are applied, and only with valid values. Anything else is ignored, so links made with an older or newer version still load.
+The settings travel as URL-safe base64 of their JSON in the `s` query parameter (`?s=eyJ2IjoxLCJwcmVzZXQiOi...`). To read or edit one by hand, decode it with `atob` (after swapping `-`/`_` back to `+`/`/`). The JSON's `v` is the link format version; links of every earlier format still load, and a link from a newer version of the app is refused with a message. When a link is loaded, only settings this version of the app knows about are applied, and only with valid values; anything else is ignored. See [SHARE_LINK_VERSIONING.md](SHARE_LINK_VERSIONING.md).
 
 A custom model isn't included in the link, because its file can't travel in a URL. The link still carries the sprite, lighting and animation settings.
 
@@ -278,7 +279,9 @@ In short, columns are the directions `N, NE, E, SE, S`, and the west-facing ones
 ```
 src/
   main.ts              app wiring, GUI, export actions
-  share.ts             share links: settings to and from the URL
+  settings.ts          the settings a share link carries: defaults, allowed values and ranges
+  shareLink.ts         share links: format versions, reading and writing them, the URL
+  share.ts             share links: settings to and from base64 JSON, merging and diffing
   history.ts           undo / redo
   rng.ts               seeded random numbers
   unit/                procedural humanoid, beast, mounted unit, vehicle and building: parameters, presets, body parts

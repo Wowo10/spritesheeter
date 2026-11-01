@@ -16,6 +16,12 @@ export type Outline = 'none' | 'inner' | 'outer' | 'colored' | 'stableColored' |
 /** How coverage decides which pixels are opaque: a fixed threshold, or ridge-preserving (see ridge.ts). */
 export type Downsample = 'classic' | 'ridge';
 
+/**
+ * What the gapBlack outline does with pinholes (see pinholes in gapOutline.ts): fills them, or
+ * leaves them open as it did before they were filled.
+ */
+export type Pinholes = 'fill' | 'open';
+
 const RAMP_COUNT = RAMP_NAMES.length;
 
 export interface PostprocessSettings {
@@ -26,6 +32,8 @@ export interface PostprocessSettings {
   outline: Outline;
   /** classic when absent. */
   downsample?: Downsample;
+  /** Only for the gapBlack outline; fill when absent. */
+  pinholes?: Pinholes;
 }
 
 /**
@@ -150,16 +158,16 @@ export interface ShadeStages {
 }
 
 /** The outlines that live in modules of their own. */
-const OUTLINERS: Record<'colored' | 'stableColored' | 'gapBlack', (f: IndexedFrame) => IndexedFrame> = {
+const OUTLINERS: Record<'colored' | 'stableColored' | 'gapBlack', (f: IndexedFrame, settings: PostprocessSettings) => IndexedFrame> = {
   colored: coloredOutline,
   stableColored: stableColoredOutline,
-  gapBlack: (f) => gapBlackOutline(f),
+  gapBlack: (f, s) => gapBlackOutline(f, { fillPinholes: s.pinholes !== 'open' }),
 };
 
 export function shadeStages(f: FrameSamples, settings: PostprocessSettings, glow: readonly number[] = []): ShadeStages {
   const shaded = shadePixels(f, settings);
   const o = settings.outline;
-  const outlined = o === 'none' ? shaded : o === 'inner' || o === 'outer' ? outline(shaded, o) : OUTLINERS[o](shaded);
+  const outlined = o === 'none' ? shaded : o === 'inner' || o === 'outer' ? outline(shaded, o) : OUTLINERS[o](shaded, settings);
   return { shaded, outlined, final: dither(outlined, f.opacity, f.phase, glow) };
 }
 

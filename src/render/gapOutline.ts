@@ -7,7 +7,7 @@
  * - gapBlackOutline: the outer outline's black ring, except where it would close a narrow gap
  *   between separate parts (a leg and the other leg, an arm and the body, a weapon and a limb)
  *   or fill a small enclosed hole. Dents in a single part are still outlined as the outer
- *   outline does.
+ *   outline does, and so are pinholes: single enclosed pixels, which would show as specks.
  * The silhouette itself is left as it is.
  */
 import { MAX_OUTLINE_LUMA } from './coloredOutline';
@@ -98,21 +98,24 @@ export function stableColoredOutline(f: IndexedFrame): IndexedFrame {
 export interface GapBlackOptions {
   dentDepth?: number;
   smallHole?: number;
+  /** false leaves pinholes open, as small holes, as before they were filled. */
+  fillPinholes?: boolean;
 }
 
 /**
  * The outer outline in black, keeping open what separates parts: a narrow gap whose two sides
  * don't join within `dentDepth` pixels of it (through the drawn pixels, diagonals included),
- * and every pixel of an enclosed hole of at most `smallHole` pixels. Larger holes are outlined
- * inside except where they're narrow.
+ * and every pixel of an enclosed hole of at most `smallHole` pixels, pinholes aside (see
+ * pinholes), which are filled. Larger holes are outlined inside except where they're narrow.
  */
-export function gapBlackOutline(f: IndexedFrame, { dentDepth = DENT_DEPTH, smallHole = SMALL_HOLE }: GapBlackOptions = {}): IndexedFrame {
+export function gapBlackOutline(f: IndexedFrame, { dentDepth = DENT_DEPTH, smallHole = SMALL_HOLE, fillPinholes = true }: GapBlackOptions = {}): IndexedFrame {
   const { width: w, height: h } = f;
   const n = w * h;
   const src = f.data;
   const data = new Uint8Array(src);
   const at = reader(f);
   const hole = holes(f);
+  const pin = fillPinholes ? pinholes(f, hole) : null;
 
   // a bounded breadth-first walk through drawn pixels, reused for every gap
   const seen = new Uint32Array(n);
@@ -157,6 +160,10 @@ export function gapBlackOutline(f: IndexedFrame, { dentDepth = DENT_DEPTH, small
       const i = y * w + x;
       if (src[i] !== 0) continue;
       if (!(at(x, y + 1) || at(x + 1, y) || at(x, y - 1) || at(x - 1, y))) continue;
+      if (pin?.[i]) {
+        data[i] = OUTLINE_INDEX;
+        continue;
+      }
       if (hole[i] && hole[i] <= smallHole) continue;
       // a hole's sides always join around it: narrow parts of one stay open as they are
       const apart = hole[i] ? always : separate;
@@ -165,6 +172,44 @@ export function gapBlackOutline(f: IndexedFrame, { dentDepth = DENT_DEPTH, small
     }
   }
   return { ...f, data };
+}
+
+/**
+ * The pinholes, as 1s: transparent pixels shut in on all four sides (enclosed holes of one
+ * pixel) that no ground passes through. Open, they show as specks of ground inside the sprite
+ * that come and go from frame to frame, so gapBlackOutline fills them, as the outer outline does.
+ * - A pixel's four sides touch each other diagonally, so they're never separate parts: a dent.
+ * - Ground can still reach it diagonally, through its corners. One reached through one corner at
+ *   most is a dead end; filling it can't cut any ground off from any other. That may make another
+ *   such pixel a dead end, and so on: a chain of them, enclosed or leading in from outside, is
+ *   filled whole. One that ground passes through, corner to corner, linking other ground (a
+ *   diagonal channel between two parallel diagonals, a leg beside a cloak) stays open.
+ * Bigger holes, gaps and the background are never filled, so what they join to stays joined.
+ */
+export function pinholes(f: IndexedFrame, hole: Uint32Array = holes(f)): Uint8Array {
+  const { width: w, data: src } = f;
+  const n = src.length;
+  const pin = new Uint8Array(n);
+  // per 1 px hole, its transparent corners not filled yet; dead ends are filled, which may make more
+  const open = new Uint8Array(n);
+  const stack: number[] = [];
+  const corners = [-w - 1, -w + 1, w - 1, w + 1];
+  for (let i = 0; i < n; i++) {
+    if (hole[i] !== 1) continue;
+    // a 1 px hole is never on the frame's edge, so its corners are inside it
+    for (const d of corners) if (src[i + d] === 0) open[i]++;
+    if (open[i] <= 1) stack.push(i);
+  }
+  while (stack.length) {
+    const i = stack.pop()!;
+    if (pin[i]) continue;
+    pin[i] = 1;
+    for (const d of corners) {
+      const q = i + d;
+      if (hole[q] === 1 && !pin[q] && --open[q] <= 1) stack.push(q);
+    }
+  }
+  return pin;
 }
 
 /**

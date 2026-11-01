@@ -134,9 +134,10 @@ describe('comparing configurations', () => {
     expect(COMPARISONS.outline.map((c) => `${c.downsample} ${c.outline}`)).toEqual(['classic outer', 'classic colored', 'classic stableColored', 'classic gapBlack']);
   });
 
-  it('keeps the defaults, which share links record only changes from, as they were', () => {
-    expect(DEFAULT_SPRITE_SETTINGS.outline).toBe('inner');
-    expect(DEFAULT_SPRITE_SETTINGS.downsample).toBe('classic');
+  it('defaults to Ridge + Gap Black, pinholes filled', () => {
+    expect(DEFAULT_SPRITE_SETTINGS.outline).toBe('gapBlack');
+    expect(DEFAULT_SPRITE_SETTINGS.downsample).toBe('ridge');
+    expect(DEFAULT_SPRITE_SETTINGS.pinholes).toBe('fill');
   });
 
   it('counts drawn, thin and outline pixels, and the narrow gaps each outline leaves open', () => {

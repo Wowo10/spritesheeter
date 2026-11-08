@@ -1,4 +1,4 @@
-import { OUTLINE_INDEX, RAMP_NAMES, SHADES } from '../src/render/palette';
+import { OUTLINE_INDEX, SHADES } from '../src/render/palette';
 import type { IndexedFrame } from '../src/render/postprocess';
 import { mulberry32 } from '../src/rng';
 
@@ -68,7 +68,8 @@ export function randomPass(size: number, ss: number, seed: number): Uint8Array {
   const rng = mulberry32(seed);
   const n = size * ss;
   const buf = new Uint8Array(n * n * 4);
-  const ramps = Array.from({ length: 5 }, () => Math.floor(rng() * RAMP_NAMES.length));
+  // the first 28 ramps, as many as there were when the golden hashes were taken (and as fit STEP in 8 bits)
+  const ramps = Array.from({ length: 5 }, () => Math.floor(rng() * 28));
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
       const dx = x - n / 2;

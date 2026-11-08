@@ -160,6 +160,7 @@ export function buildBeast(p: BeastParams, mats: MaterialLibrary): Beast {
   // lies across the frame, so it needn't be as far inside it as a head standing upright
   const faceEnd = Math.max(h * 0.85, snoutZ + snout);
   const skull = { center: [0, 0, (faceEnd - h * 0.1) / 2] as [number, number, number], size: 0.7 * (faceEnd + h * 0.1) };
+  if (p.rusty) mats.rustMetal(root);
   return { root, body, joints, hipHeight, fx, load, saddle, shadow, skull };
 }
 

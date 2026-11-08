@@ -98,6 +98,7 @@ export function buildVehicle(p: VehicleParams, mats: MaterialLibrary): Vehicle {
   }
 
   const weapon = WEAPON_BUILDERS[p.weapon](b, frame, p, d);
+  if (p.rusty) mats.rustMetal(root);
   return { root, body, frame, wheels, pole, flag, weapon, dims: d };
 }
 

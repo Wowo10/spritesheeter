@@ -434,15 +434,23 @@ function buildHair(b: PartBuilder, head: Object3D, style: HairStyle, fit: HeadFi
 const POLE = 0.95;
 /** How much of a pole sticks out behind the fist. */
 const BUTT = 0.3;
+/**
+ * The same for thrusting polearms (spear, halberd, lance, trident, glaive, pitchfork), and
+ * their heads are short too: they're held upright and thrust at full reach, and at 32 px
+ * longer ones run out of the frame.
+ */
+const SPEAR = 0.5;
 
 /**
  * Weapons hang from the grip along -Y (the continuation of the forearm), edges facing -Z:
  * that side leads in a chop and faces away from the body in the raised resting pose.
- * Poles run from BUTT behind the fist to -POLE, where their heads go.
+ * Poles run from BUTT behind the fist to -POLE (-SPEAR for the thrusting ones), where their heads go.
  */
 export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p: UnitParams): void {
   const pole: [number, V3] = [BUTT + POLE, [0, (BUTT - POLE) / 2, 0]]; // length and centre
   const head = -POLE;
+  const spear: [number, V3] = [BUTT + SPEAR, [0, (BUTT - SPEAR) / 2, 0]];
+  const tip = -SPEAR;
   switch (kind) {
     case 'sword':
       b.box(hand, 'leather', [0.05, 0.16, 0.05], [0, 0, 0]);
@@ -650,18 +658,18 @@ export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p:
       break;
     }
     case 'spear':
-      b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
-      b.cone(hand, 'steel', 0.09, 0.3, [0, head - 0.13, 0], [180, 0, 0]);
+      b.box(hand, 'wood', [0.07, spear[0], 0.07], spear[1]);
+      b.cone(hand, 'steel', 0.09, 0.24, [0, tip - 0.1, 0], [180, 0, 0]);
       break;
     case 'halberd':
-      b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
-      b.box(hand, 'steel', [0.06, 0.3, 0.22], [0, head + 0.2, -0.13]); // axe blade
-      b.box(hand, 'steel', [0.05, 0.06, 0.12], [0, head + 0.2, 0.08]); // back hook
-      b.cone(hand, 'steel', 0.07, 0.26, [0, head - 0.11, 0], [180, 0, 0]);
+      b.box(hand, 'wood', [0.07, spear[0], 0.07], spear[1]);
+      b.box(hand, 'steel', [0.06, 0.28, 0.22], [0, tip + 0.18, -0.13]); // axe blade
+      b.box(hand, 'steel', [0.05, 0.06, 0.12], [0, tip + 0.18, 0.08]); // back hook
+      b.cone(hand, 'steel', 0.07, 0.2, [0, tip - 0.08, 0], [180, 0, 0]);
       break;
     case 'lance': {
       // a little longer than the other poles
-      const shaft = POLE + 0.1;
+      const shaft = SPEAR + 0.05;
       b.box(hand, 'wood', [0.07, 0.4, 0.07], [0, 0.15, 0]); // butt
       // painted shaft tapering away from the hand, behind a cone guard that covers the fist
       b.taper(hand, p.cloth, 0.065, 0.025, shaft, [0, -0.16 - shaft / 2, 0]);
@@ -676,29 +684,29 @@ export function buildWeapon(b: PartBuilder, hand: Object3D, kind: WeaponItem, p:
       b.taper(hand, 'tawny', 0.06, 0.14, 0.4, [0, head - 0.22, 0]);
       break;
     case 'pitchfork':
-      b.box(hand, 'wood', [0.065, pole[0], 0.065], pole[1]);
-      b.box(hand, 'steel', [0.28, 0.05, 0.06], [0, head, 0]);
-      for (const x of [-0.12, 0, 0.12]) b.box(hand, 'steel', [0.04, 0.28, 0.04], [x, head - 0.16, 0]);
+      b.box(hand, 'wood', [0.065, spear[0], 0.065], spear[1]);
+      b.box(hand, 'steel', [0.28, 0.05, 0.06], [0, tip, 0]);
+      for (const x of [-0.12, 0, 0.12]) b.box(hand, 'steel', [0.04, 0.22, 0.04], [x, tip - 0.13, 0]);
       break;
     case 'trident':
-      b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
-      b.box(hand, p.metal, [0.28, 0.05, 0.07], [0, head, 0]);
+      b.box(hand, 'wood', [0.07, spear[0], 0.07], spear[1]);
+      b.box(hand, p.metal, [0.28, 0.05, 0.07], [0, tip, 0]);
       // barbed prongs, the middle one longest
       for (const x of [-0.12, 0, 0.12]) {
-        const len = x === 0 ? 0.3 : 0.22;
-        b.box(hand, p.metal, [0.045, len, 0.045], [x, head - len / 2, 0]);
-        b.cone(hand, p.metal, 0.045, 0.1, [x, head - len - 0.05, 0], [180, 0, 0]);
+        const len = x === 0 ? 0.2 : 0.14;
+        b.box(hand, p.metal, [0.045, len, 0.045], [x, tip - len / 2, 0]);
+        b.cone(hand, p.metal, 0.045, 0.08, [x, tip - len - 0.04, 0], [180, 0, 0]);
       }
       break;
     case 'glaive': {
-      b.box(hand, 'wood', [0.07, pole[0], 0.07], pole[1]);
-      b.box(hand, p.metal, [0.1, 0.08, 0.1], [0, head + 0.08, 0]); // socket
+      b.box(hand, 'wood', [0.07, spear[0], 0.07], spear[1]);
+      b.box(hand, p.metal, [0.1, 0.08, 0.1], [0, tip + 0.08, 0]); // socket
       // a long single-edged blade, drawn like the sabre's: edge leading, tip curling back
-      const top = head + 0.08;
+      const top = tip + 0.08;
       const blade = new Shape();
       blade.moveTo(-0.06, top);
-      blade.quadraticCurveTo(-0.08, top - 0.38, 0.1, top - 0.55);
-      blade.quadraticCurveTo(0.07, top - 0.3, 0.05, top);
+      blade.quadraticCurveTo(-0.08, top - 0.26, 0.1, top - 0.38);
+      blade.quadraticCurveTo(0.07, top - 0.2, 0.05, top);
       blade.closePath();
       b.mesh(hand, new ExtrudeGeometry(blade, { depth: 0.07, bevelEnabled: false }), 'steel', [0.035, 0, 0], [0, -90, 0]);
       break;

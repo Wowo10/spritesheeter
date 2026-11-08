@@ -1,5 +1,5 @@
-import { ShaderMaterial, Vector3 } from 'three';
-import { rampIndex, rampRgb, type RampName, type RGB } from './palette';
+import { Mesh, ShaderMaterial, Vector3, type Object3D } from 'three';
+import { METAL_RAMPS, rampIndex, rampRgb, type RampName, type RGB } from './palette';
 
 /**
  * One shader serves two passes, switched globally through a shared uniform:
@@ -15,8 +15,17 @@ export type ShadeMode = (typeof ShadeMode)[keyof typeof ShadeMode];
 /** Ramps that glow: their light never drops below this, whichever way they face. */
 const MIN_LIGHT: Partial<Record<RampName, number>> = { fire: 0.75, arcane: 0.75, holy: 0.75, venom: 0.75 };
 
-/** Ramp ids are written as (index + 1) * ID_STEP so 8-bit rounding can't confuse neighbours. */
-export const ID_STEP = 8;
+/** Ramp ids are written as (index + 1) * ID_STEP: exact in 8 bits (no MSAA), with room to round, for up to 63 ramps. */
+export const ID_STEP = 4;
+
+/**
+ * Rust patches on metal parts: value noise over each part's own space, `RUST_SCALE` cells per
+ * world unit (at 14 px a unit, a patch is a few pixels), rusted wherever it's above `RUST_LEVEL`.
+ */
+const RUST_SCALE = 6;
+const RUST_LEVEL = 0.59;
+/** Cache key suffix of a rust-patched material. */
+const RUSTY = '+rust';
 
 /** Lighting is relative to the camera, so it is identical for every sprite direction. */
 export interface Lighting {
@@ -56,7 +65,10 @@ const vertexShader = /* glsl */ `
   #include <morphtarget_pars_vertex>
   #include <skinning_pars_vertex>
   varying vec3 vNormal;
+  varying vec3 vLocal;
   void main() {
+    // where on the part, in its own space: rust patches stay put as the part moves
+    vLocal = position;
     #include <morphinstance_vertex>
     #include <beginnormal_vertex>
     #include <morphnormal_vertex>
@@ -81,10 +93,32 @@ const fragmentShader = /* glsl */ `
   uniform float uMinLight;
   uniform vec3 uThresholds;
   uniform float uOpacity;
+  uniform float uRust;
+  uniform float uRustId;
+  uniform vec3 uRustRamp[4];
   varying vec3 vNormal;
+  varying vec3 vLocal;
   // 4x4 ordered dither threshold in [0, 1)
   float bayer2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
   float bayer4(vec2 a) { return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+  // smooth 3D value noise in [0, 1]
+  float hash3(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1) * 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float noise3(vec3 x) {
+    vec3 i = floor(x);
+    vec3 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), f.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), f.x), f.y),
+               mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), f.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+  }
+  // blotches a few sprite pixels across, ragged at the edges
+  bool rusted() {
+    if (uRust < 0.5) return false;
+    float n = 0.7 * noise3(vLocal * ${RUST_SCALE.toFixed(1)}) + 0.3 * noise3(vLocal * ${(RUST_SCALE * 2.7).toFixed(1)} + 17.0);
+    return n > ${RUST_LEVEL.toFixed(2)};
+  }
   void main() {
     // glowing ramps fade half as fast, as in the sprites
     float opacity = uMinLight > 0.0 ? 2.0 * uOpacity : uOpacity;
@@ -92,13 +126,15 @@ const fragmentShader = /* glsl */ `
     vec3 n = normalize(vNormal);
     if (!gl_FrontFacing) n = -n;
     float light = clamp(uAmbient + uDiffuse * max(dot(n, uLightDir), 0.0) + uFill * max(n.z, 0.0), uMinLight, 1.0);
+    bool rust = rusted();
     if (uMode > 0.5) {
-      gl_FragColor = vec4(uId / 255.0, light, 0.0, 1.0);
+      gl_FragColor = vec4((rust ? uRustId : uId) / 255.0, light, 0.0, 1.0);
     } else {
-      vec3 c = light < uThresholds.x ? uRamp[0]
-             : light < uThresholds.y ? uRamp[1]
-             : light < uThresholds.z ? uRamp[2]
-             : uRamp[3];
+      int s = light < uThresholds.x ? 0 : light < uThresholds.y ? 1 : light < uThresholds.z ? 2 : 3;
+      vec3 c = s == 0 ? (rust ? uRustRamp[0] : uRamp[0])
+             : s == 1 ? (rust ? uRustRamp[1] : uRamp[1])
+             : s == 2 ? (rust ? uRustRamp[2] : uRamp[2])
+             : (rust ? uRustRamp[3] : uRamp[3]);
       gl_FragColor = vec4(c, 1.0);
     }
   }
@@ -115,11 +151,17 @@ export class MaterialLibrary {
     uThresholds: { value: new Vector3(...DEFAULT_LIGHTING.thresholds) },
     uOpacity: { value: 1 },
   };
-  private readonly cache = new Map<RampName, ShaderMaterial>();
+  /** By ramp, and by ramp + RUSTY for the rust-patched ones. */
+  private readonly cache = new Map<string, ShaderMaterial>();
   private readonly overrides = new Map<RampName, RGB[]>();
 
-  get(ramp: RampName): ShaderMaterial {
-    let mat = this.cache.get(ramp);
+  /**
+   * The material for a ramp; `rusty` patches it with the rust ramp. Both are named after the
+   * ramp, so whatever reads a part's ramp from its material (decay) sees the metal underneath.
+   */
+  get(ramp: RampName, rusty = false): ShaderMaterial {
+    const key = rusty ? ramp + RUSTY : ramp;
+    let mat = this.cache.get(key);
     if (!mat) {
       mat = new ShaderMaterial({
         vertexShader,
@@ -128,20 +170,38 @@ export class MaterialLibrary {
           ...this.shared,
           uId: { value: (rampIndex(ramp) + 1) * ID_STEP },
           uMinLight: { value: MIN_LIGHT[ramp] ?? 0 },
-          uRamp: { value: toVectors(this.overrides.get(ramp) ?? rampRgb(ramp)) },
+          uRamp: { value: toVectors(this.colors(ramp)) },
+          uRust: { value: rusty ? 1 : 0 },
+          uRustId: { value: (rampIndex('rust') + 1) * ID_STEP },
+          uRustRamp: { value: toVectors(this.colors('rust')) },
         },
       });
       mat.name = ramp;
-      this.cache.set(ramp, mat);
+      this.cache.set(key, mat);
     }
     return mat;
+  }
+
+  /** Puts rust patches on every metal part under `root`. */
+  rustMetal(root: Object3D): void {
+    root.traverse((o) => {
+      if (o instanceof Mesh && o.material instanceof ShaderMaterial && METAL_RAMPS.includes(o.material.name as RampName)) {
+        o.material = this.get(o.material.name as RampName, true);
+      }
+    });
+  }
+
+  private colors(ramp: RampName): RGB[] {
+    return this.overrides.get(ramp) ?? rampRgb(ramp);
   }
 
   /** Recolours a ramp in the preview (e.g. the team ramp); sprite ids are unaffected. */
   setRampColors(ramp: RampName, colors: RGB[]): void {
     this.overrides.set(ramp, colors);
-    const mat = this.cache.get(ramp);
-    if (mat) mat.uniforms.uRamp.value = toVectors(colors);
+    for (const [key, mat] of this.cache) {
+      if (key === ramp || key === ramp + RUSTY) mat.uniforms.uRamp.value = toVectors(colors);
+      if (ramp === 'rust') mat.uniforms.uRustRamp.value = toVectors(colors);
+    }
   }
 
   /** See-through preview, dithered like the sprites. */

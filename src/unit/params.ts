@@ -1,5 +1,5 @@
 import { mulberry32, pick, range } from '../rng';
-import { MAGIC_RAMPS, METAL_RAMPS, SKIN_RAMPS, type RampName } from '../render/palette';
+import { MAGIC_RAMPS, RANDOM_METAL_RAMPS, SKIN_RAMPS, type RampName } from '../render/palette';
 
 export const HELMETS = [
   'none',
@@ -147,6 +147,8 @@ export interface UnitParams {
   skin: RampName;
   cloth: RampName;
   metal: RampName;
+  /** Rust patches over every metal part. */
+  rusty: boolean;
   hairStyle: HairStyle;
   hair: RampName;
   /** Colour of the glowing spell effect. */
@@ -323,6 +325,7 @@ const BASE: UnitParams = {
   skin: 'skin',
   cloth: 'team',
   metal: 'steel',
+  rusty: false,
   hairStyle: 'short',
   hair: 'hair',
   magic: 'arcane',
@@ -515,7 +518,8 @@ export function randomUnit(seed: number): UnitParams {
     leftHand: archer ? 'bow' : rng() < 0.65 ? pick(rng, OFF_HAND) : pick(rng, SIDEARMS),
     skin: pick(rng, FIRST_SKINS),
     cloth: 'team',
-    metal: pick(rng, METAL_RAMPS),
+    metal: pick(rng, RANDOM_METAL_RAMPS),
+    rusty: false,
     hair: pick(rng, ['hair', 'dark', 'yellow', 'bone'] as RampName[]),
     // drawn last so adding these didn't change every earlier field for a given seed
     magic: pick(rng, MAGIC_RAMPS),

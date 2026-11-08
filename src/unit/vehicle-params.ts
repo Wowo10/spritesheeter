@@ -1,5 +1,5 @@
 import { mulberry32, pick, range } from '../rng';
-import { METAL_RAMPS, type RampName } from '../render/palette';
+import { RANDOM_METAL_RAMPS, type RampName } from '../render/palette';
 
 /**
  * ram: an iron-headed log hung on ropes and swung into gates; catapult: a throwing arm that
@@ -29,6 +29,8 @@ export interface VehicleParams {
   banner: boolean;
   wood: RampName;
   metal: RampName;
+  /** Rust patches over every metal part. */
+  rusty: boolean;
   /** Roof hides and flag. */
   cloth: RampName;
   /** The flamethrower's fire. */
@@ -84,6 +86,7 @@ const BASE: VehicleParams = {
   banner: true,
   wood: 'wood',
   metal: 'steel',
+  rusty: false,
   cloth: 'team',
   flame: 'fire',
 };
@@ -111,7 +114,7 @@ export function randomVehicle(seed: number): VehicleParams {
     roof: (base.weapon === 'ram' || base.weapon === 'flamethrower') && rng() < 0.6,
     banner: rng() < 0.7,
     wood: pick(rng, WOOD_RAMPS),
-    metal: pick(rng, METAL_RAMPS),
+    metal: pick(rng, RANDOM_METAL_RAMPS),
   };
 }
 

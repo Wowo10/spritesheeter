@@ -37,21 +37,108 @@ export const RAMPS = {
   // more skins: deep brown, and a night elf's dusky violet
   darkSkin: ['#22120c', '#46261a', '#724230', '#9e664a'],
   nightSkin: ['#241a40', '#463670', '#7260a6', '#a898d8'],
+  // more metals: flaking rust over dark iron, copper, silver, blackened steel, green patina
+  rust: ['#261814', '#6a2a10', '#b04a18', '#d87c36'],
+  copper: ['#401610', '#8a3a24', '#d26e4c', '#fab496'],
+  silver: ['#3c4048', '#7c828c', '#c0c6ce', '#fafcff'],
+  blackSteel: ['#0c0e12', '#20242c', '#3a404c', '#626a78'],
+  verdigris: ['#10302a', '#26584a', '#46907a', '#8cccb0'],
 } as const satisfies Record<string, readonly [string, string, string, string]>;
 
 export type RampName = keyof typeof RAMPS;
 
 export const RAMP_NAMES = Object.keys(RAMPS) as RampName[];
 
+/**
+ * What each ramp is called in the GUI. The keys above stay as they are, since share links,
+ * presets and saved settings name ramps by them; only what the dropdowns show changes. Names
+ * describe the colour, so they read the same whether a ramp is picked for skin, hair or walls.
+ */
+export const RAMP_LABELS: Record<RampName, string> = {
+  team: 'team color',
+  skin: 'white skin',
+  greenSkin: 'green skin',
+  paleSkin: 'pale skin',
+  steel: 'steel',
+  gold: 'gold',
+  bronze: 'bronze',
+  leather: 'brown',
+  wood: 'light brown',
+  red: 'red',
+  blue: 'blue',
+  green: 'green',
+  purple: 'purple',
+  yellow: 'yellow',
+  bone: 'bone white',
+  hair: 'dark brown',
+  dark: 'black',
+  fire: 'fire orange',
+  arcane: 'arcane blue',
+  holy: 'holy gold',
+  venom: 'venom green',
+  rotSkin: 'rotting skin',
+  ghost: 'ghost blue',
+  fur: 'grey',
+  tawny: 'sandy',
+  scales: 'swamp green',
+  darkSkin: 'dark skin',
+  nightSkin: 'violet skin',
+  rust: 'rusted iron',
+  copper: 'copper',
+  silver: 'silver',
+  blackSteel: 'black steel',
+  verdigris: 'verdigris',
+};
+
 export const SKIN_RAMPS: RampName[] = ['skin', 'darkSkin', 'paleSkin', 'greenSkin', 'nightSkin'];
 /** Skins for the undead; kept apart so random units stay among the living. */
 export const UNDEAD_SKIN_RAMPS: RampName[] = ['rotSkin', 'ghost'];
 export const CLOTH_RAMPS: RampName[] = ['team', 'red', 'blue', 'green', 'purple', 'yellow'];
-export const METAL_RAMPS: RampName[] = ['steel', 'gold', 'bronze'];
+/** Every metal: what the GUI offers, and what stays metal (not flesh) on a corpse. */
+export const METAL_RAMPS: RampName[] = ['steel', 'gold', 'bronze', 'rust', 'copper', 'silver', 'blackSteel', 'verdigris'];
+/** The metals random units are drawn from: the first ones only, so every seed keeps its metal. */
+export const RANDOM_METAL_RAMPS: RampName[] = ['steel', 'gold', 'bronze'];
 /** Fur, hide and scales for beasts. */
 export const HIDE_RAMPS: RampName[] = ['fur', 'hair', 'leather', 'tawny', 'dark', 'bone', 'paleSkin', 'scales', 'greenSkin', 'red', 'yellow', 'rotSkin', 'ghost'];
 /** Glowing ramps for spell effects. */
 export const MAGIC_RAMPS: RampName[] = ['arcane', 'holy', 'venom', 'fire'];
+
+/** Skins as the GUI lists them, lightest to darkest, then the inhuman and the undead. */
+export const SKIN_CHOICES: RampName[] = ['paleSkin', 'skin', 'darkSkin', 'greenSkin', 'nightSkin', 'rotSkin', 'ghost'];
+/**
+ * Every ramp in the order the GUI lists them where any ramp goes (hair, a loaded model's
+ * materials): natural hair colours first, dark to light, then dyes, magic, metals and skins.
+ */
+export const RAMP_CHOICES: RampName[] = [
+  'dark',
+  'hair',
+  'leather',
+  'wood',
+  'tawny',
+  'yellow',
+  'copper',
+  'fur',
+  'silver',
+  'bone',
+  'red',
+  'blue',
+  'green',
+  'purple',
+  'team',
+  'scales',
+  'fire',
+  'arcane',
+  'holy',
+  'venom',
+  'ghost',
+  'steel',
+  'gold',
+  'bronze',
+  'rust',
+  'blackSteel',
+  'verdigris',
+  ...SKIN_CHOICES.filter((r) => r !== 'ghost'),
+];
 
 export type RGB = [number, number, number];
 

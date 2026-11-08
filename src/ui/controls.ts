@@ -1,6 +1,6 @@
 import type GUI from 'lil-gui';
 import type { Controller } from 'lil-gui';
-import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_NAMES, SKIN_RAMPS, UNDEAD_SKIN_RAMPS } from '../render/palette';
+import { CLOTH_RAMPS, HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, RAMP_CHOICES, RAMP_LABELS, SKIN_CHOICES, type RampName } from '../render/palette';
 import { BACKS, BARDINGS, EARS, HORNS, WINGS, type BeastParams } from '../unit/beast-params';
 import { LIGHT_RAMPS, ROOF_RAMPS, ROOFS, TRIM_RAMPS, WALL_RAMPS, type BuildingParams } from '../unit/building-params';
 import { MOUNT_BARDINGS } from '../unit/mounted';
@@ -41,6 +41,9 @@ export function rememberOpen(g: GUI): void {
 
 // --- the procedural units' controls
 
+/** A dropdown's options for these ramps: each shown by its label, set by its name. */
+export const rampOptions = (ramps: readonly RampName[]): Record<string, RampName> => Object.fromEntries(ramps.map((r) => [RAMP_LABELS[r], r]));
+
 /**
  * A humanoid's controls in `folder`, calling `onChange` once one has changed; a rider leaves
  * out gait, body, opacity and shadow, which riding fixes.
@@ -61,7 +64,8 @@ export function humanoidControllers(u: UnitParams, folder: GUI, onChange: () => 
         }
         onChange();
       });
-  const plain: Controller[] = [
+  // in groups, each thing next to its colour: body, head, hair, outfit, hands, magic
+  const before: Controller[] = [
     folder.add(u, 'height', 0.8, 1.25, 0.01),
     folder.add(u, 'bulk', 0.75, 1.45, 0.01),
     folder.add(u, 'headSize', 0.7, 1.5, 0.01).name('head size'),
@@ -70,35 +74,36 @@ export function humanoidControllers(u: UnitParams, folder: GUI, onChange: () => 
     folder.add(u, 'armLength', 0.75, 1.3, 0.01).name('arm length'),
     folder.add(u, 'armThickness', 0.7, 1.5, 0.01).name('arm thickness'),
     folder.add(u, 'legLength', 0.75, 1.3, 0.01).name('leg length'),
-    folder.add(u, 'helmet', HELMETS),
-    folder.add(u, 'face', FACES),
-    folder.add(u, 'beard', BEARDS),
-    folder.add(u, 'teeth', TEETH),
+    folder.add(u, 'skin', rampOptions(SKIN_CHOICES)),
     folder.add(u, 'ears', EAR_STYLES),
+    folder.add(u, 'teeth', TEETH),
+    folder.add(u, 'face', FACES),
     folder.add(u, 'hairStyle', HAIR_STYLES).name('hair style'),
+    folder.add(u, 'beard', BEARDS),
+    folder.add(u, 'hair', rampOptions(RAMP_CHOICES)).name('hair color'),
+    folder.add(u, 'helmet', HELMETS),
     folder.add(u, 'armor', ARMORS),
+    folder.add(u, 'cloth', rampOptions([...CLOTH_RAMPS, 'ghost'])).name('cloth color'),
+    folder.add(u, 'metal', rampOptions(METAL_RAMPS)),
+    folder.add(u, 'rusty'),
+    folder.add(u, 'cape', CAPES),
+    folder.add(u, 'capeColor', rampOptions(CLOTH_RAMPS)).name('cape color'),
   ];
   hands.push(hand('rightHand', 'right hand'), hand('leftHand', 'left hand'));
-  const colors = [
-    folder.add(u, 'skin', [...SKIN_RAMPS, ...UNDEAD_SKIN_RAMPS]),
-    folder.add(u, 'cloth', [...CLOTH_RAMPS, 'ghost']),
-    folder.add(u, 'metal', METAL_RAMPS),
-    folder.add(u, 'hair', RAMP_NAMES).name('hair color'),
-    folder.add(u, 'magic', MAGIC_RAMPS).name('magic color'),
-    folder.add(u, 'cape', CAPES),
-    folder.add(u, 'capeColor', CLOTH_RAMPS).name('cape color'),
+  const after = [
+    folder.add(u, 'magic', rampOptions(MAGIC_RAMPS)).name('magic color'),
+    folder.add(u, 'glowEyes').name('glowing eyes'),
+    ...(rider
+      ? []
+      : [
+          folder.add(u, 'gait', GAITS),
+          folder.add(u, 'body', BODIES),
+          folder.add(u, 'opacity', 0.25, 1, 0.25),
+          folder.add(u, 'shadow').name('ground shadow'),
+        ]),
   ];
-  const spooky = rider
-    ? [folder.add(u, 'glowEyes').name('glowing eyes')]
-    : [
-        folder.add(u, 'gait', GAITS),
-        folder.add(u, 'body', BODIES),
-        folder.add(u, 'opacity', 0.25, 1, 0.25),
-        folder.add(u, 'glowEyes').name('glowing eyes'),
-        folder.add(u, 'shadow').name('ground shadow'),
-      ];
-  [...plain, ...colors, ...spooky].forEach((c) => c.onFinishChange(onChange));
-  return [...plain, ...hands, ...colors, ...spooky];
+  [...before, ...after].forEach((c) => c.onFinishChange(onChange));
+  return [...before, ...hands, ...after];
 }
 
 /** A beast's controls in `folder`; a mount always wears a seat, so its barding is a saddle or armour. */
@@ -116,22 +121,23 @@ export function beastControllers(b: BeastParams, folder: GUI, onChange: () => vo
     folder.add(b, 'beak'),
     folder.add(b, 'tailLength', 0, 1.6, 0.01).name('tail length'),
     folder.add(b, 'tailThickness', 0.3, 1.6, 0.01).name('tail thickness'),
+    folder.add(b, 'hide', rampOptions(HIDE_RAMPS)),
+    folder.add(b, 'belly', rampOptions(HIDE_RAMPS)),
     folder.add(b, 'ears', EARS),
     folder.add(b, 'horns', HORNS),
     folder.add(b, 'back', BACKS),
-    folder.add(b, 'barding', mount ? MOUNT_BARDINGS : BARDINGS),
+    folder.add(b, 'accent', rampOptions(HIDE_RAMPS)).name('mane / spikes'),
     folder.add(b, 'wings', WINGS),
     folder.add(b, 'wingSize', 0.6, 1.4, 0.01).name('wing size'),
-    folder.add(b, 'wingColor', HIDE_RAMPS).name('wing color'),
+    folder.add(b, 'wingColor', rampOptions(HIDE_RAMPS)).name('wing color'),
     folder.add(b, 'flying'),
-    folder.add(b, 'hide', HIDE_RAMPS),
-    folder.add(b, 'belly', HIDE_RAMPS),
-    folder.add(b, 'accent', HIDE_RAMPS).name('mane / spikes'),
-    folder.add(b, 'metal', METAL_RAMPS),
-    folder.add(b, 'magic', MAGIC_RAMPS).name('magic color'),
+    folder.add(b, 'barding', mount ? MOUNT_BARDINGS : BARDINGS),
+    folder.add(b, 'metal', rampOptions(METAL_RAMPS)),
+    folder.add(b, 'rusty'),
+    folder.add(b, 'magic', rampOptions(MAGIC_RAMPS)).name('magic color'),
     folder.add(b, 'breath').name('magic breath'),
-    folder.add(b, 'opacity', 0.25, 1, 0.25),
     folder.add(b, 'glowEyes').name('glowing eyes'),
+    folder.add(b, 'opacity', 0.25, 1, 0.25),
     folder.add(b, 'shadow').name('ground shadow'),
   ];
   controllers.forEach((c) => c.onFinishChange(onChange));
@@ -141,17 +147,18 @@ export function beastControllers(b: BeastParams, folder: GUI, onChange: () => vo
 export function vehicleControllers(v: VehicleParams, folder: GUI, onChange: () => void): Controller[] {
   const controllers = [
     folder.add(v, 'weapon', WEAPONS),
+    folder.add(v, 'flame', rampOptions(MAGIC_RAMPS)).name('flame color'),
     folder.add(v, 'size', 0.6, 1.4, 0.01),
     folder.add(v, 'length', 0.6, 1.4, 0.01),
     folder.add(v, 'width', 0.6, 1.4, 0.01),
     folder.add(v, 'wheels', 1, 3, 1).name('wheels per side'),
     folder.add(v, 'wheelSize', 0.6, 1.5, 0.01).name('wheel size'),
+    folder.add(v, 'wood', rampOptions(WOOD_RAMPS)),
+    folder.add(v, 'metal', rampOptions(METAL_RAMPS)),
+    folder.add(v, 'rusty'),
     folder.add(v, 'roof').name('roof (ram, flamethrower)'),
     folder.add(v, 'banner'),
-    folder.add(v, 'wood', WOOD_RAMPS),
-    folder.add(v, 'metal', METAL_RAMPS),
-    folder.add(v, 'cloth', CLOTH_RAMPS).name('roof / flag'),
-    folder.add(v, 'flame', MAGIC_RAMPS).name('flame color'),
+    folder.add(v, 'cloth', rampOptions(CLOTH_RAMPS)).name('roof / flag color'),
   ];
   controllers.forEach((c) => c.onFinishChange(onChange));
   return controllers;
@@ -162,14 +169,14 @@ export function buildingControllers(p: BuildingParams, folder: GUI, onChange: ()
     folder.add(p, 'size', 0.7, 1.3, 0.01),
     folder.add(p, 'blocks', 1, 5, 1),
     folder.add(p, 'floors', 1, 4, 1).name('storeys'),
+    folder.add(p, 'walls', rampOptions(WALL_RAMPS)),
+    folder.add(p, 'trim', rampOptions(TRIM_RAMPS)),
     folder.add(p, 'roof', ROOFS),
-    folder.add(p, 'windows', 0, 1, 0.05),
+    folder.add(p, 'roofColor', rampOptions(ROOF_RAMPS)).name('roof color'),
     folder.add(p, 'chimneys'),
+    folder.add(p, 'windows', 0, 1, 0.05),
+    folder.add(p, 'light', rampOptions(LIGHT_RAMPS)).name('light color'),
     folder.add(p, 'banner'),
-    folder.add(p, 'walls', WALL_RAMPS),
-    folder.add(p, 'trim', TRIM_RAMPS),
-    folder.add(p, 'roofColor', ROOF_RAMPS).name('roof color'),
-    folder.add(p, 'light', LIGHT_RAMPS).name('light color'),
   ];
   controllers.forEach((c) => c.onFinishChange(onChange));
   return controllers;

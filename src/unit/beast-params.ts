@@ -1,5 +1,5 @@
 import { mulberry32, pick, range } from '../rng';
-import { HIDE_RAMPS, MAGIC_RAMPS, METAL_RAMPS, type RampName } from '../render/palette';
+import { HIDE_RAMPS, MAGIC_RAMPS, RANDOM_METAL_RAMPS, type RampName } from '../render/palette';
 
 export const EARS = ['none', 'pointed', 'floppy', 'round'] as const;
 /** horns: curving up from the brow; tusks: jutting up from the lower jaw. */
@@ -56,6 +56,8 @@ export interface BeastParams {
   /** Mane, spikes or ridge. */
   accent: RampName;
   metal: RampName;
+  /** Rust patches over every metal part. */
+  rusty: boolean;
   magic: RampName;
   /** Spits its spell (cast) and breathes a steady stream (channel), in the magic colour. */
   breath: boolean;
@@ -152,6 +154,7 @@ const BASE: BeastParams = {
   belly: 'bone',
   accent: 'dark',
   metal: 'steel',
+  rusty: false,
   magic: 'fire',
   breath: false,
   opacity: 1,
@@ -426,7 +429,7 @@ export function randomBeast(seed: number, archetypes: readonly string[] = ARCHET
     hide: pick(rng, HIDE_RAMPS.filter((r) => r !== 'rotSkin' && r !== 'ghost')),
     belly: pick(rng, ['bone', 'paleSkin', 'leather', 'hair', 'yellow'] as RampName[]),
     accent: pick(rng, ['dark', 'hair', 'leather', 'red', 'bone'] as RampName[]),
-    metal: pick(rng, METAL_RAMPS),
+    metal: pick(rng, RANDOM_METAL_RAMPS),
     magic: pick(rng, MAGIC_RAMPS),
     breath: magic,
     glowEyes: magic,

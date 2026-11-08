@@ -10,7 +10,7 @@ import { packSheet, packStrip, teamMeta, type AnimationFrames, type Sheet } from
 import { openPlayground } from './playground/playground';
 import { clearDecay } from './render/decay';
 import { MaterialLibrary } from './render/materials';
-import { PALETTE, RAMP_NAMES, TEAM_COLOR_NAMES, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
+import { PALETTE, RAMP_CHOICES, TEAM_COLOR_NAMES, teamPalette, teamRgb, type RampName, type TeamColor } from './render/palette';
 import { PORTRAIT_BACKGROUNDS, PORTRAIT_SIZES } from './render/portrait';
 import { framePortrait, type FrameSamples, type IndexedFrame } from './render/postprocess';
 import { anchorOf, shadeSprite, shadeSprites, SpriteRenderer, type Direction } from './render/spriteRenderer';
@@ -24,7 +24,7 @@ import { MOUNT_BARDINGS, type MountedParams } from './unit/mounted';
 import { PRESETS, type UnitParams } from './unit/params';
 import { MAX_ZOOM, MIN_ZOOM, Preview3D } from './ui/preview3d';
 import { CompassPreview, StripPreview } from './ui/spritePreview';
-import { beastControllers, buildingControllers, humanoidControllers, presetOf, rememberOpen, restoreOpen, vehicleControllers } from './ui/controls';
+import { beastControllers, buildingControllers, humanoidControllers, presetOf, rampOptions, rememberOpen, restoreOpen, vehicleControllers } from './ui/controls';
 import { showDesktopNotice } from './ui/desktopNotice';
 import { initSplitter } from './ui/splitter';
 import type { DiagnosticsPanel } from './ui/diagnosticsPanel';
@@ -888,7 +888,7 @@ function rebindModel(): void {
   const materials = restoreOpen(modelFolder.addFolder('Materials → palette'));
   for (const mat of m.materials) {
     materials
-      .add({ ramp: mat.ramp }, 'ramp', RAMP_NAMES)
+      .add({ ramp: mat.ramp }, 'ramp', rampOptions(RAMP_CHOICES))
       .name(mat.name)
       .onChange((ramp: RampName) => {
         // or putting back a rotted corpse would undo the new ramp
